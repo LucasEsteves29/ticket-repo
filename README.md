@@ -1,4 +1,4 @@
-## Quem faz o quê
+## Responsabilidades
 
 | Integrante | Usuário GitHub | Agregado / Módulo |
 | :--- | :--- | :--- |
