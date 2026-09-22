@@ -14,9 +14,7 @@ from enum import Enum
 class ErroDeDominio(Exception):
     """Base de toda violação de invariante do domínio."""
 
-
 class StatusTicket(Enum):
-
     DISPONIVEL = "disponivel"
     ANUNCIADO = "anunciado"
     VENDIDO = "vendido"
@@ -38,9 +36,11 @@ class TicketNaoAnunciado(ErroDeDominio):
 class TicketNaoVendido(ErroDeDominio):
     """Tentativa de usar um ticket que ainda não foi vendido."""
 
+
 class TicketAnunciado(ErroDeDominio):
     """Tentativa de usar um ticket que está em um anúncio ativo."""
-    
+
+
 class CompraDoProprioTicket(ErroDeDominio):
     """Tentativa de vender um ticket para quem já é o dono dele."""
 
@@ -123,8 +123,8 @@ class Ticket:
             raise TicketNaoVendido(
                 f"ticket {self.id} não foi vendido (status: {self.status.value})"
             )
-        self.status = StatusTicket.USADO 
-    
+        self.status = StatusTicket.USADO
+
     def retirar_anuncio(self) -> None:
         """Retira o ticket de um anúncio ativo, revertendo para VENDIDO.
 
@@ -148,6 +148,53 @@ class Ticket:
         if not isinstance(other, Ticket):
             return False
         return other.id == self.id
+
+    def __hash__(self) -> int:
+        return hash(self.id)
+
+
+class StatusVenda(Enum):
+    ATIVA = "ativa"
+    CONCLUIDA = "concluida"
+    CANCELADA = "cancelada"
+
+
+class PrecoAcimaDoLimite(ErroDeDominio):
+    """Tentativa de criar anúncio ou alterar preço acima de 110% do valor original."""
+
+
+class Venda:
+    """Raiz do agregado Venda."""
+
+    def __init__(
+        self,
+        id: str,
+        ticket_id: str,
+        vendedor_id: str,
+        preco: Decimal,
+        valor_original: Decimal,
+    ):
+        # Validação do preço de revenda: não pode ultrapassar 110% do valor original
+        limite_maximo = valor_original * Decimal("1.10")
+        if preco > limite_maximo:
+            raise PrecoAcimaDoLimite(
+                f"Preço {preco} excede o limite máximo permitido de 110% ({limite_maximo})"
+            )
+
+        self.id = id
+        self.ticket_id = ticket_id
+        self.vendedor_id = vendedor_id
+        self.preco = preco
+        self.valor_original = valor_original
+        self.status = StatusVenda.ATIVA
+
+    def __repr__(self) -> str:
+        return f"<Venda {self.id} {self.status.value}>"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Venda):
+            return False
+        return self.id == other.id
 
     def __hash__(self) -> int:
         return hash(self.id)
