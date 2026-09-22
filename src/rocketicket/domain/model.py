@@ -28,7 +28,7 @@ class StatusVenda(Enum):
     CANCELADA = "cancelada"
 
 
-class PrecoAcimaDoLimite(Exception):
+class PrecoAcimaDoLimite(ErroDeDominio):
     pass
 
 
