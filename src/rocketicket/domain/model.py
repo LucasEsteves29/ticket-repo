@@ -14,12 +14,6 @@ from enum import Enum
 class ErroDeDominio(Exception):
     """Base de toda violação de invariante do domínio."""
 
-
-# ===========================================================================
-# Bloco: Ticket (Lucas + Caio)
-# ===========================================================================
-
-
 class StatusTicket(Enum):
     DISPONIVEL = "disponivel"
     ANUNCIADO = "anunciado"
@@ -157,11 +151,6 @@ class Ticket:
 
     def __hash__(self) -> int:
         return hash(self.id)
-
-
-# ===========================================================================
-# Bloco: Venda (Igor + Miguel)
-# ===========================================================================
 
 
 class StatusVenda(Enum):
