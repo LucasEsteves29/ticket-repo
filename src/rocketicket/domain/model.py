@@ -38,7 +38,9 @@ class TicketNaoAnunciado(ErroDeDominio):
 class TicketNaoVendido(ErroDeDominio):
     """Tentativa de usar um ticket que ainda não foi vendido."""
 
-
+class TicketAnunciado(ErroDeDominio):
+    """Tentativa de usar um ticket que está em um anúncio ativo."""
+    
 class CompraDoProprioTicket(ErroDeDominio):
     """Tentativa de vender um ticket para quem já é o dono dele."""
 
@@ -103,6 +105,25 @@ class Ticket:
             )
         self.dono_id = novo_dono_id
         self.status = StatusTicket.VENDIDO
+
+    def usar(self) -> None:
+        """Faz o check-in do ticket, seu estado final.
+
+        Só pode ser usado se já foi vendido (não basta estar ANUNCIADO); uma
+        vez usado, não pode ser usado de novo nem revendido/anunciado — ver
+        anunciar() e vender().
+        """
+        if self.status is StatusTicket.USADO:
+            raise TicketJaUsado(f"ticket {self.id} já foi usado")
+        if self.status is StatusTicket.ANUNCIADO:
+            raise TicketAnunciado(
+                f"ticket {self.id} está anunciado e não pode ser usado"
+            )
+        if self.status is not StatusTicket.VENDIDO:
+            raise TicketNaoVendido(
+                f"ticket {self.id} não foi vendido (status: {self.status.value})"
+            )
+        self.status = StatusTicket.USADO 
 
     def __repr__(self) -> str:
         return f"<Ticket {self.id} {self.status.value}>"
