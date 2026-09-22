@@ -124,6 +124,22 @@ class Ticket:
                 f"ticket {self.id} não foi vendido (status: {self.status.value})"
             )
         self.status = StatusTicket.USADO 
+    
+    def retirar_anuncio(self) -> None:
+        """Retira o ticket de um anúncio ativo, revertendo para VENDIDO.
+
+        É o inverso de anunciar(): o dono desiste de revender sem que uma
+        venda tenha ocorrido, então não há transferência de posse aqui.
+        """
+        if self.status is StatusTicket.USADO:
+            raise TicketJaUsado(
+                f"ticket {self.id} já foi usado e não pode ter o anúncio retirado."
+            )
+        if self.status is not StatusTicket.ANUNCIADO:
+            raise TicketNaoAnunciado(
+                f"ticket {self.id} não está anunciado (status: {self.status.value})"
+            )
+        self.status = StatusTicket.VENDIDO
 
     def __repr__(self) -> str:
         return f"<Ticket {self.id} {self.status.value}>"
