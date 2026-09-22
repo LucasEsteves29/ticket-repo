@@ -163,6 +163,10 @@ class PrecoAcimaDoLimite(ErroDeDominio):
     """Tentativa de criar anúncio ou alterar preço acima de 110% do valor original."""
 
 
+class VendaEncerrada(ErroDeDominio):
+    """Tentativa de alterar, cancelar ou concluir uma venda já cancelada ou concluída."""
+
+
 class Venda:
     """Raiz do agregado Venda."""
 
@@ -187,6 +191,33 @@ class Venda:
         self.preco = preco
         self.valor_original = valor_original
         self.status = StatusVenda.ATIVA
+
+    def alterar_preco(self, novo_preco: Decimal) -> None:
+        """Troca o preço do anúncio, respeitando o mesmo limite de 110% da criação."""
+        self._exigir_ativa("ter o preço alterado")
+        limite_maximo = self.valor_original * Decimal("1.10")
+        if novo_preco > limite_maximo:
+            raise PrecoAcimaDoLimite(
+                f"Preço {novo_preco} excede o limite máximo permitido de 110% ({limite_maximo})"
+            )
+        self.preco = novo_preco
+
+    def cancelar(self) -> None:
+        """Encerra o anúncio sem venda. CANCELADA é estado final."""
+        self._exigir_ativa("ser cancelada")
+        self.status = StatusVenda.CANCELADA
+
+    def concluir(self) -> None:
+        """Encerra o anúncio com a venda feita. CONCLUIDA é estado final."""
+        self._exigir_ativa("ser concluída")
+        self.status = StatusVenda.CONCLUIDA
+
+    def _exigir_ativa(self, acao: str) -> None:
+        """Venda cancelada ou concluída não volta a ATIVA nem muda de preço."""
+        if self.status is not StatusVenda.ATIVA:
+            raise VendaEncerrada(
+                f"venda {self.id} está {self.status.value} e não pode {acao}"
+            )
 
     def __repr__(self) -> str:
         return f"<Venda {self.id} {self.status.value}>"
