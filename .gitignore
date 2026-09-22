@@ -1,0 +1,40 @@
+.venv/
+venv/
+env/
+
+# Bytecode e build do Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+
+# Caches de ferramentas
+.pytest_cache/
+# .mypy_cache entra em uso na Semana 13, com o mypy.ini
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Banco local. Os testes usam SQLite em memória (sqlite://), mas rodar a
+# app localmente a partir da Semana 4 pode gerar arquivo em disco.
+*.db
+*.sqlite
+*.sqlite3
+
+# Configuração local e segredos (config.py lê variáveis de ambiente)
+.env
+.env.local
+
+# Editores
+.vscode/
+.idea/
+*.swp
+*~
+
+# Sistema operacional (o repo vive em /mnt/c, então lixo do Windows aparece)
+.DS_Store
+Thumbs.db
+desktop.ini
