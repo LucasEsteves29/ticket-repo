@@ -229,3 +229,45 @@ class Venda:
 
     def __hash__(self) -> int:
         return hash(self.id)
+
+
+class StatusPagamento(Enum):
+    PENDENTE = "pendente"  
+    APROVADO = "aprovado"  
+    RECUSADO = "recusado"  
+
+
+class StatusPedido(Enum):
+    ABERTO = "aberto"
+    CONFIRMADO = "confirmado"
+    CANCELADO = "cancelado"
+
+
+class Pagamento:
+    """O pagamento do pedido. Mora dentro do Pedido, nao sai de la sozinho."""
+
+    def __init__(self, valor: Decimal):
+        self.valor = valor
+        self.status = StatusPagamento.PENDENTE 
+
+
+class Pedido:
+    """Raiz do agregado Pedido."""
+
+    def __init__(self, id: str, ticket_id: str, comprador_id: str, valor: Decimal):
+        self.id = id
+        self.ticket_id = ticket_id
+        self.comprador_id = comprador_id
+        self.pagamento = Pagamento(valor)
+        self.status = StatusPedido.ABERTO
+
+    def __repr__(self) -> str:
+        return f"<Pedido {self.id} {self.status.value}>"
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, Pedido):
+            return False
+        return other.id == self.id
+
+    def __hash__(self) -> int:
+        return hash(self.id)
