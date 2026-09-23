@@ -201,9 +201,9 @@ class Venda:
 
 
 class StatusPagamento(Enum):
-    PENDENTE = "pendente"  # dinheiro ainda nao caiu
-    APROVADO = "aprovado"  # caiu!!
-    RECUSADO = "recusado"  # cartao estourado kkk
+    PENDENTE = "pendente"  
+    APROVADO = "aprovado"  
+    RECUSADO = "recusado"  
 
 
 class StatusPedido(Enum):
@@ -217,7 +217,7 @@ class Pagamento:
 
     def __init__(self, valor: Decimal):
         self.valor = valor
-        self.status = StatusPagamento.PENDENTE  # todo pagamento comeca na fe
+        self.status = StatusPagamento.PENDENTE 
 
 
 class Pedido:
