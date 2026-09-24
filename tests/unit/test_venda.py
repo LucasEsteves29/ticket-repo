@@ -7,6 +7,7 @@ from rocketicket.domain.model import (
     PrecoAcimaDoLimite,
     StatusVenda,
     Venda,
+    VendaEncerrada,
 )
 
 VALOR_ORIGINAL = Decimal("100.00")
@@ -57,3 +58,90 @@ class TestLimitePrecoVenda:
                 preco=Decimal("110.01"),
                 valor_original=VALOR_ORIGINAL,
             )
+
+
+def nova_venda(preco=Decimal("100.00")):
+    """Anúncio ativo, recém-criado."""
+    return Venda(
+        id="v1",
+        ticket_id="t1",
+        vendedor_id="u1",
+        preco=preco,
+        valor_original=VALOR_ORIGINAL,
+    )
+
+
+def cancelada():
+    venda = nova_venda()
+    venda.cancelar()
+    return venda
+
+
+def concluida():
+    venda = nova_venda()
+    venda.concluir()
+    return venda
+
+
+class TestAlterarPreco:
+    def test_alterar_preco_dentro_do_limite(self):
+        venda = nova_venda()
+        venda.alterar_preco(Decimal("110.00"))
+        assert venda.preco == Decimal("110.00")
+
+    def test_novo_preco_acima_de_110_falha(self):
+        venda = nova_venda()
+        with pytest.raises(PrecoAcimaDoLimite):
+            venda.alterar_preco(Decimal("110.01"))
+
+    def test_preco_recusado_mantem_o_anterior(self):
+        venda = nova_venda(preco=Decimal("100.00"))
+        with pytest.raises(PrecoAcimaDoLimite):
+            venda.alterar_preco(Decimal("150.00"))
+        assert venda.preco == Decimal("100.00")
+
+    def test_alterar_preco_de_venda_cancelada_falha(self):
+        venda = cancelada()
+        with pytest.raises(VendaEncerrada):
+            venda.alterar_preco(Decimal("90.00"))
+        assert venda.preco == Decimal("100.00")
+
+    def test_alterar_preco_de_venda_concluida_falha(self):
+        venda = concluida()
+        with pytest.raises(VendaEncerrada):
+            venda.alterar_preco(Decimal("90.00"))
+        assert venda.preco == Decimal("100.00")
+
+
+class TestEncerramento:
+    def test_cancelar_marca_cancelada(self):
+        assert cancelada().status is StatusVenda.CANCELADA
+
+    def test_concluir_marca_concluida(self):
+        assert concluida().status is StatusVenda.CONCLUIDA
+
+    def test_venda_cancelada_nao_pode_ser_cancelada_de_novo(self):
+        venda = cancelada()
+        with pytest.raises(VendaEncerrada):
+            venda.cancelar()
+
+    def test_venda_concluida_nao_pode_ser_concluida_de_novo(self):
+        venda = concluida()
+        with pytest.raises(VendaEncerrada):
+            venda.concluir()
+
+
+class TestReativar:
+    """Venda encerrada não volta a ATIVA por nenhum caminho."""
+
+    def test_venda_cancelada_nao_pode_ser_concluida(self):
+        venda = cancelada()
+        with pytest.raises(VendaEncerrada):
+            venda.concluir()
+        assert venda.status is StatusVenda.CANCELADA
+
+    def test_venda_concluida_nao_pode_ser_cancelada(self):
+        venda = concluida()
+        with pytest.raises(VendaEncerrada):
+            venda.cancelar()
+        assert venda.status is StatusVenda.CONCLUIDA
