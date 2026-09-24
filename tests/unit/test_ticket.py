@@ -17,6 +17,7 @@ from rocketicket.domain.model import (
     CompraDoProprioTicket,
     StatusTicket,
     Ticket,
+    TicketAnunciado,
     TicketJaAnunciado,
     TicketJaUsado,
     TicketNaoAnunciado,
@@ -125,3 +126,66 @@ class TestVender:
         ticket.anunciar()
         ticket.vender("u1")
         assert ticket.dono_id == "u1"
+
+class TestUsar:
+    def test_usar_faz_o_checkin(self):
+        ticket = novo_ticket()
+        ticket.usar()
+        assert ticket.status is StatusTicket.USADO
+
+    def test_usar_ticket_ja_usado_falha(self):
+        ticket = usado()
+        with pytest.raises(TicketJaUsado):
+            ticket.usar()
+
+    def test_usar_ticket_anunciado_falha(self):
+        ticket = anunciado()
+        with pytest.raises(TicketAnunciado):
+            ticket.usar()
+
+    def test_usar_nao_troca_o_dono(self):
+        ticket = novo_ticket(dono_id="u1")
+        ticket.usar()
+        assert ticket.dono_id == "u1"
+
+    def test_usar_recusado_nao_altera_o_ticket(self):
+        ticket = anunciado(dono_id="u1")
+        with pytest.raises(TicketAnunciado):
+            ticket.usar()
+        assert ticket.status is StatusTicket.ANUNCIADO
+        assert ticket.dono_id == "u1"
+
+    def test_usar_depois_de_revenda_funciona(self):
+        ticket = anunciado(dono_id="u1")
+        ticket.vender("u2")
+        ticket.usar()
+        assert ticket.status is StatusTicket.USADO
+        assert ticket.dono_id == "u2"
+
+
+class TestRetirarAnuncio:
+    def test_retirar_anuncio_volta_para_vendido(self):
+        ticket = anunciado()
+        ticket.retirar_anuncio()
+        assert ticket.status is StatusTicket.VENDIDO
+
+    def test_retirar_anuncio_nao_troca_o_dono(self):
+        ticket = anunciado(dono_id="u1")
+        ticket.retirar_anuncio()
+        assert ticket.dono_id == "u1"
+
+    def test_retirar_anuncio_sem_anuncio_ativo_falha(self):
+        ticket = novo_ticket()
+        with pytest.raises(TicketNaoAnunciado):
+            ticket.retirar_anuncio()
+
+    def test_retirar_anuncio_de_ticket_usado_falha(self):
+        ticket = usado()
+        with pytest.raises(TicketJaUsado):
+            ticket.retirar_anuncio()
+
+    def test_ticket_pode_ser_reanunciado_depois_de_retirado(self):
+        ticket = anunciado()
+        ticket.retirar_anuncio()
+        ticket.anunciar()
+        assert ticket.status is StatusTicket.ANUNCIADO        
