@@ -232,9 +232,9 @@ class Venda:
 
 
 class StatusPagamento(Enum):
-    PENDENTE = "pendente"  
-    APROVADO = "aprovado"  
-    RECUSADO = "recusado"  
+    PENDENTE = "pendente"
+    APROVADO = "aprovado"
+    RECUSADO = "recusado"
 
 
 class StatusPedido(Enum):
@@ -243,16 +243,54 @@ class StatusPedido(Enum):
     CANCELADO = "cancelado"
 
 
+class PagamentoJaProcessado(ErroDeDominio):
+    """Tentativa de aprovar ou recusar um pagamento que já saiu de PENDENTE."""
+
+
+class PagamentoNaoAprovado(ErroDeDominio):
+    """Tentativa de confirmar um pedido cujo pagamento não foi aprovado."""
+
+
+class TicketIndisponivel(ErroDeDominio):
+    """Tentativa de confirmar um pedido cujo ticket não está à venda."""
+
+
+class PedidoEncerrado(ErroDeDominio):
+    """Tentativa de mexer em um pedido já confirmado ou cancelado."""
+
+
 class Pagamento:
-    """O pagamento do pedido. Mora dentro do Pedido, nao sai de la sozinho."""
+    """O pagamento do pedido. Mora dentro do Pedido, nao sai de la sozinho.
+
+    Sai de PENDENTE uma única vez, para APROVADO ou RECUSADO. Quem garante
+    que o pedido ainda está aberto é a raiz Pedido, não o Pagamento.
+    """
 
     def __init__(self, valor: Decimal):
         self.valor = valor
-        self.status = StatusPagamento.PENDENTE 
+        self.status = StatusPagamento.PENDENTE
+
+    def aprovar(self) -> None:
+        self._exigir_pendente("aprovado")
+        self.status = StatusPagamento.APROVADO
+
+    def recusar(self) -> None:
+        self._exigir_pendente("recusado")
+        self.status = StatusPagamento.RECUSADO
+
+    def _exigir_pendente(self, acao: str) -> None:
+        if self.status is not StatusPagamento.PENDENTE:
+            raise PagamentoJaProcessado(
+                f"pagamento está {self.status.value} e não pode ser {acao}"
+            )
 
 
 class Pedido:
-    """Raiz do agregado Pedido."""
+    """Raiz do agregado Pedido.
+
+    Ciclo de vida: nasce ABERTO e vai para CONFIRMADO ou CANCELADO, ambos
+    estados finais. Todo acesso ao Pagamento passa por aqui.
+    """
 
     def __init__(self, id: str, ticket_id: str, comprador_id: str, valor: Decimal):
         self.id = id
@@ -260,6 +298,43 @@ class Pedido:
         self.comprador_id = comprador_id
         self.pagamento = Pagamento(valor)
         self.status = StatusPedido.ABERTO
+
+    def aprovar_pagamento(self) -> None:
+        self._exigir_aberto("ter o pagamento alterado")
+        self.pagamento.aprovar()
+
+    def recusar_pagamento(self) -> None:
+        self._exigir_aberto("ter o pagamento alterado")
+        self.pagamento.recusar()
+
+    def confirmar(self, status_ticket: StatusTicket) -> None:
+        """Confirma o pedido com o status do ticket no momento da confirmação.
+
+        O Pedido não enxerga o agregado Ticket, então o service lê o ticket e
+        passa o status. "Disponível para compra" é ANUNCIADO — DISPONIVEL é
+        inalcançável e não serve para essa checagem.
+        """
+        self._exigir_aberto("ser confirmado")
+        if self.pagamento.status is not StatusPagamento.APROVADO:
+            raise PagamentoNaoAprovado(
+                f"pedido {self.id} tem pagamento {self.pagamento.status.value}"
+            )
+        if status_ticket is not StatusTicket.ANUNCIADO:
+            raise TicketIndisponivel(
+                f"ticket {self.ticket_id} não está à venda (status: {status_ticket.value})"
+            )
+        self.status = StatusPedido.CONFIRMADO
+
+    def cancelar(self) -> None:
+        self._exigir_aberto("ser cancelado")
+        self.status = StatusPedido.CANCELADO
+
+    def _exigir_aberto(self, acao: str) -> None:
+        """Pedido confirmado ou cancelado não volta a ABERTO nem muda de pagamento."""
+        if self.status is not StatusPedido.ABERTO:
+            raise PedidoEncerrado(
+                f"pedido {self.id} está {self.status.value} e não pode {acao}"
+            )
 
     def __repr__(self) -> str:
         return f"<Pedido {self.id} {self.status.value}>"
