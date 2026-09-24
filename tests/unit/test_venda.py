@@ -59,6 +59,29 @@ class TestLimitePrecoVenda:
                 valor_original=VALOR_ORIGINAL,
             )
 
+    def test_permitir_preco_com_teto_arredondado_para_baixo(self):
+        """99.99 * 1.10 = 109.989 -> teto truncado para baixo é 109.98."""
+        venda = Venda(
+            id="v4",
+            ticket_id="t1",
+            vendedor_id="u1",
+            preco=Decimal("109.98"),
+            valor_original=Decimal("99.99"),
+        )
+        assert venda.preco == Decimal("109.98")
+        assert venda.status is StatusVenda.ATIVA
+
+    def test_recusar_preco_acima_do_teto_com_tres_casas_decimais(self):
+        """99.99 * 1.10 = 109.989 -> 109.99 excede o teto truncado de 109.98."""
+        with pytest.raises(PrecoAcimaDoLimite):
+            Venda(
+                id="v5",
+                ticket_id="t1",
+                vendedor_id="u1",
+                preco=Decimal("109.99"),
+                valor_original=Decimal("99.99"),
+            )
+
 
 def nova_venda(preco=Decimal("100.00")):
     """Anúncio ativo, recém-criado."""

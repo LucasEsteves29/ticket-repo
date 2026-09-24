@@ -7,7 +7,7 @@ O arquivo é dividido em um bloco por agregado. Cada bloco guarda o enum de stat
 exceções e a raiz do próprio agregado.
 """
 
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN
 from enum import Enum
 
 
@@ -178,19 +178,22 @@ class Venda:
         preco: Decimal,
         valor_original: Decimal,
     ):
-        # Validação do preço de revenda: não pode ultrapassar 110% do valor original
-        limite_maximo = valor_original * Decimal("1.10")
+        self.id = id
+        self.ticket_id = ticket_id
+        self.vendedor_id = vendedor_id
+        self.valor_original = valor_original
+        self._validar_preco(preco)
+        self.preco = preco
+        self.status = StatusVenda.ATIVA
+
+    def _validar_preco(self, preco: Decimal) -> None:
+        limite_maximo = (self.valor_original * Decimal("1.10")).quantize(
+            Decimal("0.01"), rounding=ROUND_DOWN
+        )
         if preco > limite_maximo:
             raise PrecoAcimaDoLimite(
                 f"Preço {preco} excede o limite máximo permitido de 110% ({limite_maximo})"
             )
-
-        self.id = id
-        self.ticket_id = ticket_id
-        self.vendedor_id = vendedor_id
-        self.preco = preco
-        self.valor_original = valor_original
-        self.status = StatusVenda.ATIVA
 
     def alterar_preco(self, novo_preco: Decimal) -> None:
         """Troca o preço do anúncio, respeitando o mesmo limite de 110% da criação."""
