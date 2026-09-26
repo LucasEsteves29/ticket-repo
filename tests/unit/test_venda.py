@@ -82,15 +82,26 @@ class TestLimitePrecoVenda:
                 valor_original=Decimal("99.99"),
             )
 
+    def test_recusar_preco_entre_o_teto_arredondado_e_o_exato(self):
+        """109.985 fica entre o teto truncado (109.98) e o exato (109.989)."""
+        with pytest.raises(PrecoAcimaDoLimite):
+            Venda(
+                id="v6",
+                ticket_id="t1",
+                vendedor_id="u1",
+                preco=Decimal("109.985"),
+                valor_original=Decimal("99.99"),
+            )
 
-def nova_venda(preco=Decimal("100.00")):
+
+def nova_venda(preco=Decimal("100.00"), valor_original=VALOR_ORIGINAL):
     """Anúncio ativo, recém-criado."""
     return Venda(
         id="v1",
         ticket_id="t1",
         vendedor_id="u1",
         preco=preco,
-        valor_original=VALOR_ORIGINAL,
+        valor_original=valor_original,
     )
 
 
@@ -121,6 +132,26 @@ class TestAlterarPreco:
         venda = nova_venda(preco=Decimal("100.00"))
         with pytest.raises(PrecoAcimaDoLimite):
             venda.alterar_preco(Decimal("150.00"))
+        assert venda.preco == Decimal("100.00")
+
+    def test_alterar_preco_ate_o_teto_arredondado_para_baixo(self):
+        """99.99 * 1.10 = 109.989 -> teto truncado para baixo é 109.98."""
+        venda = nova_venda(valor_original=Decimal("99.99"))
+        venda.alterar_preco(Decimal("109.98"))
+        assert venda.preco == Decimal("109.98")
+
+    def test_alterar_preco_acima_do_teto_arredondado_falha(self):
+        """99.99 * 1.10 = 109.989 -> 109.99 excede o teto truncado de 109.98."""
+        venda = nova_venda(preco=Decimal("100.00"), valor_original=Decimal("99.99"))
+        with pytest.raises(PrecoAcimaDoLimite):
+            venda.alterar_preco(Decimal("109.99"))
+        assert venda.preco == Decimal("100.00")
+
+    def test_alterar_preco_entre_o_teto_arredondado_e_o_exato_falha(self):
+        """109.985 fica entre o teto truncado (109.98) e o exato (109.989)."""
+        venda = nova_venda(preco=Decimal("100.00"), valor_original=Decimal("99.99"))
+        with pytest.raises(PrecoAcimaDoLimite):
+            venda.alterar_preco(Decimal("109.985"))
         assert venda.preco == Decimal("100.00")
 
     def test_alterar_preco_de_venda_cancelada_falha(self):

@@ -198,11 +198,7 @@ class Venda:
     def alterar_preco(self, novo_preco: Decimal) -> None:
         """Troca o preço do anúncio, respeitando o mesmo limite de 110% da criação."""
         self._exigir_ativa("ter o preço alterado")
-        limite_maximo = self.valor_original * Decimal("1.10")
-        if novo_preco > limite_maximo:
-            raise PrecoAcimaDoLimite(
-                f"Preço {novo_preco} excede o limite máximo permitido de 110% ({limite_maximo})"
-            )
+        self._validar_preco(novo_preco)
         self.preco = novo_preco
 
     def cancelar(self) -> None:
