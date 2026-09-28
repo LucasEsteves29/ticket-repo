@@ -27,4 +27,4 @@ jobs:
           pip install -r requirements.txt
 
       - name: Tests
-        run: pytest tests/unit
+        run: pytest tests/unit tests/integration
