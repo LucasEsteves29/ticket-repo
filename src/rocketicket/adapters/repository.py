@@ -10,6 +10,8 @@ tests/conftest.py.
 import abc
 from typing import Generic, TypeVar
 
+from rocketicket.domain import model
+
 T = TypeVar("T")
 
 
@@ -36,8 +38,20 @@ class AbstractRepository(abc.ABC, Generic[T]):
 
 
 # Venda — Miguel
-# AbstractVendaRepository(AbstractRepository[model.Venda]), que acrescenta
-# get_ativa_por_ticket(ticket_id), e o repositório concreto que a implementa.
+
+
+class AbstractVendaRepository(AbstractRepository[model.Venda]):
+    """
+    Repositorio de Venda: além de add() e get(), acha o anúncio ativo de um ticket.
+
+    É por aqui que criar_anuncio descobe se o ticket já tem um anúncio ATIVA
+    antes de abrir outro.
+    """
+
+    @abc.abstractmethod
+    def get_ativa_por_ticket(self, ticket_id: str) -> model.Venda | None:
+        """Devolve a venda ATIVA desse ticket, ou None se ele não estiver anunciado."""
+        raise NotImplementedError
 
 
 # Pedido — Guilherme
