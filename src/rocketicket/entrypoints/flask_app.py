@@ -9,6 +9,8 @@ from rocketicket.service_layer import services
 
 CAMPOS_TICKET = ("id", "evento_id", "valor_original", "dono_id")
 CAMPOS_ANUNCIO = ("id", "ticket_id", "vendedor_id", "preco")
+CAMPOS_PEDIDO = ("id", "ticket_id", "comprador_id")
+CAMPOS_CONFIRMACAO = ("pagamento_aprovado",)
 
 def create_app(session_factory):
     orm.start_mappers()
@@ -69,6 +71,40 @@ def create_app(session_factory):
         return {"id": venda_id}, 201
 
     # endpoints de Pedido: Guilherme
+    @app.post("/pedidos")
+    def criar_pedido():
+        dados = _ler_json(CAMPOS_PEDIDO)
+        pedido_id = services.criar_pedido(
+            _ler_texto(dados, "id"),
+            _ler_texto(dados, "ticket_id"),
+            _ler_texto(dados, "comprador_id"),
+            repository.SqlAlchemyPedidoRepository(g.session),
+            repository.SqlAlchemyVendaRepository(g.session),
+            g.session,
+        )
+        return {"id": pedido_id}, 201
+
+    @app.post("/pedidos/<pedido_id>/confirmacao")
+    def confirmar_pedido(pedido_id):
+        dados = _ler_json(CAMPOS_CONFIRMACAO)
+        aprovado = _ler_booleano(dados, "pagamento_aprovado")
+        services.confirmar_pedido(
+            pedido_id,
+            aprovado,
+            repository.SqlAlchemyPedidoRepository(g.session),
+            repository.SqlAlchemyTicketRepository(g.session),
+            g.session,
+        )
+        return {"id": pedido_id, "pagamento": "aprovado" if aprovado else "recusado"}, 200
+
+    @app.post("/pedidos/<pedido_id>/cancelamento")
+    def cancelar_pedido(pedido_id):
+        services.cancelar_pedido(
+            pedido_id,
+            repository.SqlAlchemyPedidoRepository(g.session),
+            g.session,
+        )
+        return {"id": pedido_id}, 200
 
     return app
 
@@ -86,6 +122,12 @@ def _ler_json(campos):
 def _ler_texto(dados, campo):
     if not isinstance(dados[campo], str) or not dados[campo]:
         abort(400, f"{campo} precisa ser um texto não vazio")
+    return dados[campo]
+
+
+def _ler_booleano(dados, campo):
+    if not isinstance(dados[campo], bool):
+        abort(400, f"{campo} precisa ser true ou false")
     return dados[campo]
 
 
