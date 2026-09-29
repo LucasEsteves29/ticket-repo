@@ -54,5 +54,29 @@ class AbstractVendaRepository(AbstractRepository[model.Venda]):
         raise NotImplementedError
 
 
+class SqlAlchemyVendaRepository(AbstractVendaRepository):
+    """Venda persistida com SQLAlchemy.
+
+    Recebe a sessão pronta e não importa o SQLAlchemy: o conftest.py importa este
+    módulo, e os testes unitários não podem carregar o banco. Não faz commit.
+    """
+
+    def __init__(self, session):
+        self.session = session
+
+    def add(self, venda: model.Venda) -> None:
+        self.session.add(venda)
+
+    def get(self, id: str) -> model.Venda | None:
+        return self.session.get(model.Venda, id)
+
+    def get_ativa_por_ticket(self, ticket_id: str) -> model.Venda | None:
+        return (
+            self.session.query(model.Venda)
+            .filter_by(ticket_id=ticket_id, status=model.StatusVenda.ATIVA)
+            .first()
+        )
+
+
 # Pedido — Guilherme
 # Repositório concreto de model.Pedido, herdando AbstractRepository[model.Pedido].
