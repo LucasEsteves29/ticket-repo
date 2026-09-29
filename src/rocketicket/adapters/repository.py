@@ -58,9 +58,9 @@ class SqlAlchemyTicketRepository(AbstractRepository[model.Ticket]):
 
 class AbstractVendaRepository(AbstractRepository[model.Venda]):
     """
-    Repositorio de Venda: além de add() e get(), acha o anúncio ativo de um ticket.
+    Repositório de Venda: além de add() e get(), acha o anúncio ativo de um ticket.
 
-    É por aqui que criar_anuncio descobe se o ticket já tem um anúncio ATIVA
+    É por aqui que criar_anuncio descobre se o ticket já tem uma venda ATIVA
     antes de abrir outro.
     """
 
