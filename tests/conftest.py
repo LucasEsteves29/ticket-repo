@@ -1,5 +1,5 @@
 import pytest
-from rocketicket.adapters.repository import AbstractVendaRepository
+from rocketicket.adapters.repository import AbstractRepository, AbstractVendaRepository
 from rocketicket.domain import model
 
 # imports dentro das fixtures: os testes unitários não podem carregar o SQLAlchemy
@@ -46,3 +46,16 @@ class FakeVendaRepository(AbstractVendaRepository):
             ),
             None,
         )
+
+
+class FakePedidoRepository(AbstractRepository[model.Pedido]):
+    
+
+    def __init__(self, pedidos=None):
+        self._pedidos = set(pedidos or [])
+
+    def add(self, pedido: model.Pedido) -> None:
+        self._pedidos.add(pedido)
+
+    def get(self, id: str) -> model.Pedido | None:
+        return next((p for p in self._pedidos if p.id == id), None)
