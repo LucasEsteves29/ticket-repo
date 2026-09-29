@@ -6,7 +6,7 @@ from rocketicket.domain import model
 from rocketicket.domain.model import StatusTicket, StatusVenda, Ticket
 
 from rocketicket.service_layer import services
-from tests.conftest import FakeTicketRepository, FakeVendaRepository
+from conftest import FakeTicketRepository, FakeVendaRepository
 
 
 VALOR_TICKET = Decimal("100.00")
