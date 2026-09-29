@@ -1,4 +1,6 @@
 import pytest
+from rocketicket.adapters.repository import AbstractVendaRepository
+from rocketicket.domain import model
 
 # imports dentro das fixtures: os testes unitários não podem carregar o SQLAlchemy
 
@@ -26,3 +28,21 @@ def session(in_memory_db):
     yield sessao
     sessao.close()
     clear_mappers()
+
+class FakeVendaRepository(AbstractVendaRepository):
+    """Implementação em memória de Venda para uso em testes unitários."""
+    def __init__(self, vendas=None):
+        self._vendas = set(vendas or [])
+    def add(self, venda: model.Venda) -> None:
+        self._vendas.add(venda)
+    def get(self, id: str) -> model.Venda | None:
+        return next((v for v in self._vendas if v.id == id), None)
+    def get_ativa_por_ticket(self, ticket_id: str) -> model.Venda | None:
+        return next(
+            (
+                v
+                for v in self._vendas
+                if v.ticket_id == ticket_id and v.status is model.StatusVenda.ATIVA
+            ),
+            None,
+        )
