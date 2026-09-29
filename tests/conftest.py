@@ -112,3 +112,8 @@ class FakePedidoRepository(AbstractRepository[model.Pedido]):
 
     def get(self, id: str) -> model.Pedido | None:
         return next((p for p in self._pedidos if p.id == id), None)
+
+
+@pytest.fixture
+def fake_pedido_repository():
+    return FakePedidoRepository()
