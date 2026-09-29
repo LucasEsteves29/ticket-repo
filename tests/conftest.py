@@ -31,6 +31,18 @@ def session(in_memory_db):
     yield sessao
     sessao.close()
     clear_mappers()
+
+
+class FakeSession:
+    committed = False
+
+    def commit(self):
+        self.committed = True
+
+
+@pytest.fixture
+def fake_session():
+    return FakeSession()
     
 class FakeTicketRepository(AbstractRepository[model.Ticket]):
     """Implementação em memória do repositório de Ticket."""
