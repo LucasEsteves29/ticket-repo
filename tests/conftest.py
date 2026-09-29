@@ -5,7 +5,7 @@ from rocketicket.adapters.repository import (
 )
 from rocketicket.domain import model
 
-# imports dentro das fixtures: os testes unitários não podem carregar o SQLAlchemy
+# imports dentro das fixtures: unitários não podem carregar SQLAlchemy nem Flask
 
 
 @pytest.fixture
@@ -30,6 +30,18 @@ def session(in_memory_db):
     sessao = sessionmaker(bind=in_memory_db)()
     yield sessao
     sessao.close()
+    clear_mappers()
+
+
+@pytest.fixture
+def client(in_memory_db):
+    from sqlalchemy.orm import clear_mappers, sessionmaker
+
+    from rocketicket.entrypoints.flask_app import create_app
+
+    app = create_app(sessionmaker(bind=in_memory_db))
+    app.testing = True
+    yield app.test_client()
     clear_mappers()
 
 

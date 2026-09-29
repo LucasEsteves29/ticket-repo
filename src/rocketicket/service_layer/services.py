@@ -4,7 +4,15 @@ from rocketicket.adapters.repository import AbstractRepository
 from rocketicket.domain import model
 
 
-class TicketJaExiste(Exception):
+class ErroDeServico(Exception):
+    pass
+
+
+class RecursoNaoEncontrado(ErroDeServico):
+    pass
+
+
+class TicketJaExiste(ErroDeServico):
     pass
 
 
