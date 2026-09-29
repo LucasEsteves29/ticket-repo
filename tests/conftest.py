@@ -96,6 +96,9 @@ class FakeVendaRepository(AbstractVendaRepository):
             ),
             None,
         )
+@pytest.fixture
+def fake_venda_repository():
+    return FakeVendaRepository()
 
 
 class FakePedidoRepository(AbstractRepository[model.Pedido]):
