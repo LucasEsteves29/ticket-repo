@@ -8,7 +8,7 @@ from rocketicket.domain import model
 from rocketicket.service_layer import services
 
 CAMPOS_TICKET = ("id", "evento_id", "valor_original", "dono_id")
-
+CAMPOS_ANUNCIO = ("id", "ticket_id", "vendedor_id", "preco")
 
 def create_app(session_factory):
     orm.start_mappers()
@@ -54,6 +54,18 @@ def create_app(session_factory):
         return {"id": ticket_id}, 201
 
     # endpoints de Venda: Igor
+    @app.post("/anuncios")
+    def criar_anuncio():
+        dados = _ler_json(CAMPOS_ANUNCIO)
+        venda_id = services.criar_anuncio(
+            _ler_texto(dados, "id"),
+            _ler_texto(dados, "ticket_id"),
+            _ler_texto(dados, "vendedor_id"),
+            _ler_decimal(dados, "preco"),
+            repository.SqlAlchemyVendaRepository(g.session),
+            g.session,
+        )
+        return {"id": venda_id}, 201
 
     # endpoints de Pedido: Guilherme
 
