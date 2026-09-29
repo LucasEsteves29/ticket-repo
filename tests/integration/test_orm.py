@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 
 from rocketicket.domain.model import StatusTicket, Ticket
 from rocketicket.domain.model import StatusVenda, Venda
+from rocketicket.domain.model import Pagamento, Pedido, StatusPagamento, StatusPedido
 
 VALOR = Decimal("150.00")
 
@@ -104,3 +105,93 @@ class TestMapeamentoVenda:
             session.execute(sql, {"status": status})
         session.rollback()
         assert session.execute(text("SELECT COUNT(*) FROM vendas")).scalar_one() == 0
+
+
+VALOR_PEDIDO = Decimal("110.00")
+
+
+def novo_pedido(valor=VALOR_PEDIDO):
+    return Pedido(id="p1", ticket_id="t1", comprador_id="u2", valor=valor)
+
+
+class TestMapeamentoPedido:
+    def test_pedido_salvo_volta_campo_a_campo(self, session):
+        salvar(session, novo_pedido())
+
+        lido = session.get(Pedido, "p1")
+
+        assert lido.id == "p1"
+        assert lido.ticket_id == "t1"
+        assert lido.comprador_id == "u2"
+        assert lido.status is StatusPedido.ABERTO
+
+    def test_pagamento_volta_junto_com_o_pedido(self, session):
+        salvar(session, novo_pedido())
+
+        lido = session.get(Pedido, "p1")
+
+        assert isinstance(lido.pagamento, Pagamento)
+        assert lido.pagamento.valor == VALOR_PEDIDO
+        assert lido.pagamento.status is StatusPagamento.PENDENTE
+
+    def test_pagamento_gravado_na_tabela_pagamentos(self, session):
+        salvar(session, novo_pedido())
+
+        linha = session.execute(
+            text("SELECT pedido_id, valor, status FROM pagamentos")
+        ).one()
+
+        assert linha.pedido_id == "p1"
+        assert linha.status == "pendente"
+
+    def test_status_gravados_como_valor_do_enum(self, session):
+        pedido = novo_pedido()
+        pedido.aprovar_pagamento()
+        pedido.confirmar(StatusTicket.ANUNCIADO)
+        salvar(session, pedido)
+
+        status_pedido = session.execute(text("SELECT status FROM pedidos")).scalar_one()
+        status_pagamento = session.execute(
+            text("SELECT status FROM pagamentos")
+        ).scalar_one()
+
+        assert status_pedido == "confirmado"
+        assert status_pagamento == "aprovado"
+
+    def test_valor_do_pagamento_volta_como_decimal(self, session):
+        salvar(session, novo_pedido(valor=Decimal("19.99")))
+
+        lido = session.get(Pedido, "p1")
+
+        assert isinstance(lido.pagamento.valor, Decimal)
+        assert lido.pagamento.valor == Decimal("19.99")
+
+    @pytest.mark.parametrize("status", ["pago", "ABERTO"])
+    def test_banco_recusa_status_pedido_fora_do_enum(self, session, status):
+        sql = text(
+            "INSERT INTO pedidos (id, ticket_id, comprador_id, status)"
+            " VALUES ('p1', 't1', 'u2', :status)"
+        )
+        with pytest.raises(IntegrityError):
+            session.execute(sql, {"status": status})
+        session.rollback()
+
+        assert session.execute(text("SELECT COUNT(*) FROM pedidos")).scalar_one() == 0
+
+    @pytest.mark.parametrize("status", ["estornado", "PENDENTE"])
+    def test_banco_recusa_status_pagamento_fora_do_enum(self, session, status):
+        session.execute(
+            text(
+                "INSERT INTO pedidos (id, ticket_id, comprador_id, status)"
+                " VALUES ('p1', 't1', 'u2', 'aberto')"
+            )
+        )
+        sql = text(
+            "INSERT INTO pagamentos (pedido_id, valor, status)"
+            " VALUES ('p1', 110.00, :status)"
+        )
+        with pytest.raises(IntegrityError):
+            session.execute(sql, {"status": status})
+        session.rollback()
+
+        assert session.execute(text("SELECT COUNT(*) FROM pagamentos")).scalar_one() == 0
