@@ -50,8 +50,20 @@ def _mapear_ticket() -> None:
     mapper_registry.map_imperatively(model.Ticket, tickets)
 
 
-# Venda — Igor: tabela vendas e _mapear_venda()
+# Venda — Igor
 
+vendas = Table(
+    "vendas",
+    metadata,
+    Column("id", String(255), primary_key=True),
+    Column("ticket_id", String(255), nullable=False),
+    Column("vendedor_id", String(255), nullable=False),
+    Column("preco", Numeric(10, 2), nullable=False),
+    Column("valor_original", Numeric(10, 2), nullable=False),
+    Column("status", _enum_por_valor(model.StatusVenda), nullable=False),
+)
+def _mapear_venda() -> None:
+    mapper_registry.map_imperatively(model.Venda, vendas)
 
 # Pedido — Guilherme: tabelas pedidos e pagamentos e _mapear_pedido()
 
@@ -62,5 +74,5 @@ def start_mappers() -> None:
     Uma vez por processo; nos testes, uma vez por fixture, com clear_mappers()
     """
     _mapear_ticket()
-    # _mapear_venda()   # Igor
+    _mapear_venda()   
     # _mapear_pedido()  # Guilherme
