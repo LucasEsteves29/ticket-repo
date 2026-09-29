@@ -42,13 +42,21 @@ tests/unit/test_smoke.py, .github/workflows/ci.yml
 
 **Decisões:**
 
-### Igor Leal (@usuario-github)
-
-**O que fiz:**
-
-**Arquivos:**
-
+### Igor Leal (@igorbleal)
+**O que fiz:** implementei a entidade Venda em model.py, o enum StatusVenda
+(com os estados ATIVA, CONCLUIDA e CANCELADA) e a exceção PrecoAcimaDoLimite.
+Na inicialização da Venda, implementei a validação do teto máximo de revenda de
+110% do valor original utilizando Decimal com quantize e arredondamento para
+baixo (ROUND_DOWN). Escrevi os testes unitários de criação válida e do teto de
+110% em test_venda.py.
+**Arquivos:** src/rocketicket/domain/model.py, tests/unit/test_venda.py
 **Decisões:**
+- A raiz Venda não valida outros anúncios do mesmo ticket porque não enxerga
+  outras vendas; essa regra foi delegada ao agregado Ticket.
+- O cálculo do teto de 110% é truncado para duas casas decimais com
+  ROUND_DOWN. Isso evita que dízimas como 99.99 * 1.10 = 109.989 sejam
+  arredondadas para cima pelo banco de dados (virando 109.99), o que faria a
+  venda ultrapassar o limite permitido de 110% ao ser recarregada.
 
 ### Miguel Duque (@usuario-github)
 
@@ -115,13 +123,28 @@ src/rocketicket/domain/model.py, tests/unit/test_venda.py
 
 **Decisões:**
 
-### Igor Leal (@usuario-github)
+### Igor Leal (@igorbleal)
 
-**O que fiz:**
+**O que fiz:** Criei a tabela vendas no orm.py e a função _mapear_venda() com o
+mapeamento imperativo da entidade Venda, registrando-a dentro de start_mappers().
+No conftest.py, implementei a classe FakeVendaRepository herdando de
+AbstractVendaRepository com os métodos add(), get() e get_ativa_por_ticket(),
+viabilizando os testes unitários do serviço. Em test_orm.py, escrevi a classe
+TestMapeamentoVenda com os testes de integração do mapeamento, verificando a
+persistência e recuperação campo a campo, o salvamento do status como valor
+do enum em minúsculas, a integridade dos tipos Decimal para valores monetários
+e a rejeição de status fora do enum no banco.
 
-**Arquivos:**
+**Arquivos:** src/rocketicket/adapters/orm.py, tests/conftest.py,
+tests/integration/test_orm.py
 
 **Decisões:**
+- As colunas de preço e valor original na tabela vendas usam Numeric(10, 2),
+  garantindo precisão monetária de 2 casas decimais e compatibilidade com o
+  Decimal do domínio.
+- O FakeVendaRepository implementa get_ativa_por_ticket() filtrando a coleção
+  em memória por ticket_id e StatusVenda.ATIVA, mantendo a paridade de
+  comportamento exata com a consulta executada pelo SqlAlchemyVendaRepository no banco.
 
 ### Miguel Duque (@usuario-github)
 
@@ -183,13 +206,46 @@ tests/unit/test_services_ticket.py, tests/e2e/test_ticket_api.py,
 
 **Decisões:**
 
-### Igor Leal (@usuario-github)
+### Igor Leal (@igorbleal)
 
-**O que fiz:**
+**O que fiz:** implementei o caso de uso criar_anuncio em services.py, com a
+exceção VendaJaExiste herdando de ErroDeServico. O serviço busca o ticket no
+repositório de tickets, valida se ele existe, invoca ticket.anunciar() para
+garantir as invariantes de ciclo de vida do ticket, cria a entidade Venda com
+o valor_original obtido diretamente do ticket (validando o teto de 110%) e
+persiste no repositório de vendas confirmando na sessão. Escrevi os testes
+unitários da camada de serviço em test_services_venda.py utilizando apenas os
+Fakes (FakeTicketRepository, FakeVendaRepository e FakeSession). Na camada de
+entrada, criei o endpoint POST /anuncios no flask_app.py, validando o JSON de
+entrada com os helpers centrais da API e chamando o service com as sessões e
+repositórios adequados. Por fim, escrevi a suíte de testes de ponta a ponta (e2e)
+em test_venda_api.py cobrindo criação com sucesso, validação de campos
+obrigatórios, preço inválido, duplicidade de ID, ticket inexistente, ticket já
+anunciado e violação do teto de 110%.
 
-**Arquivos:**
+**Arquivos:** src/rocketicket/service_layer/services.py,
+src/rocketicket/entrypoints/flask_app.py,
+tests/unit/test_services_venda.py,
+tests/e2e/test_venda_api.py
 
 **Decisões:**
+- O endpoint POST /anuncios e o serviço criar_anuncio não recebem o valor_original
+  no payload, apenas ticket_id, vendedor_id e preco. O service busca o ticket
+  no repositório e obtém o valor_original diretamente da entidade Ticket. Isso
+  impede que um cliente mal-intencionado envie um valor original falso para
+  burlar a regra do teto de 110%.
+- A regra de que o ticket não pode estar em dois anúncios ativos ao mesmo tempo
+  continua delegada ao próprio agregado Ticket: ao chamar ticket.anunciar(), o
+  Ticket lança TicketJaAnunciado se já estiver anunciado (ou TicketJaUsado se já
+  foi consumido). O flask_app.py captura esse ErroDeDominio centralmente e
+  retorna HTTP 400 sem necessidade de try/except na rota.
+- Caso o ticket informado não exista, o serviço lança RecursoNaoEncontrado
+  (subclasse de ErroDeServico), traduzido centralmente pelo Flask para HTTP 404.
+  Já se o id da Venda for repetido, lança VendaJaExiste, traduzido para HTTP 409
+  (Conflict), garantindo consistência semântica com o POST /tickets.
+- O preço do anúncio chega como string no JSON e é validado com _ler_decimal(),
+  garantindo conversão estrita para Decimal antes de entrar no service e no
+  domínio, eliminando qualquer risco de inconsistência de ponto flutuante.a aman
 
 ### Miguel Duque (@usuario-github)
 
