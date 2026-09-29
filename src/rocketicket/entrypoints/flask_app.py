@@ -63,6 +63,7 @@ def create_app(session_factory):
             _ler_texto(dados, "vendedor_id"),
             _ler_decimal(dados, "preco"),
             repository.SqlAlchemyVendaRepository(g.session),
+            repository.SqlAlchemyTicketRepository(g.session),
             g.session,
         )
         return {"id": venda_id}, 201
