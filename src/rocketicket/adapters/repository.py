@@ -34,8 +34,24 @@ class AbstractRepository(abc.ABC, Generic[T]):
 
 
 # Ticket — Caio
-# Repositório concreto de model.Ticket, herdando AbstractRepository[model.Ticket].
+class SqlAlchemyTicketRepository(AbstractRepository[model.Ticket]):
+    """Persistência de tickets usando uma sessão SQLAlchemy."""
 
+    def __init__(self, session):
+        self.session = session
+
+    def add(self, ticket: model.Ticket) -> None:
+        self.session.add(ticket)
+
+    def get(self, id: str) -> model.Ticket | None:
+        return self.session.get(model.Ticket, id)
+
+    def list(self) -> list[model.Ticket]:
+        return (
+            self.session.query(model.Ticket)
+            .order_by(model.Ticket.id)
+            .all()
+        )
 
 # Venda — Miguel
 
