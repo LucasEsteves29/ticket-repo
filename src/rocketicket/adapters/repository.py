@@ -95,4 +95,20 @@ class SqlAlchemyVendaRepository(AbstractVendaRepository):
 
 
 # Pedido — Guilherme
-# Repositório concreto de model.Pedido, herdando AbstractRepository[model.Pedido].
+
+
+class SqlAlchemyPedidoRepository(AbstractRepository[model.Pedido]):
+    """Persistência de pedidos (com o Pagamento dentro) usando uma sessão SQLAlchemy.
+
+    O Pagamento não tem repositório próprio: ele vai e volta junto com o Pedido,
+    pelo cascade do mapeamento em orm.py.
+    """
+
+    def __init__(self, session):
+        self.session = session
+
+    def add(self, pedido: model.Pedido) -> None:
+        self.session.add(pedido)
+
+    def get(self, id: str) -> model.Pedido | None:
+        return self.session.get(model.Pedido, id)

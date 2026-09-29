@@ -72,3 +72,16 @@ class FakeVendaRepository(AbstractVendaRepository):
             ),
             None,
         )
+
+
+class FakePedidoRepository(AbstractRepository[model.Pedido]):
+    
+
+    def __init__(self, pedidos=None):
+        self._pedidos = set(pedidos or [])
+
+    def add(self, pedido: model.Pedido) -> None:
+        self._pedidos.add(pedido)
+
+    def get(self, id: str) -> model.Pedido | None:
+        return next((p for p in self._pedidos if p.id == id), None)
