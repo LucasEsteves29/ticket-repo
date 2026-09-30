@@ -58,13 +58,33 @@ baixo (ROUND_DOWN). Escrevi os testes unitários de criação válida e do teto 
   arredondadas para cima pelo banco de dados (virando 109.99), o que faria a
   venda ultrapassar o limite permitido de 110% ao ser recarregada.
 
-### Miguel Duque (@usuario-github)
+### Miguel Duque (@miguelduq)
 
-**O que fiz:**
+**O que fiz:** implementei na Venda os métodos alterar_preco(), cancelar() e
+concluir(), a exceção VendaEncerrada e o método auxiliar _exigir_ativa(). Em
+test_venda.py, escrevi os testes de violação dessas operações: alterar o preço
+de uma venda cancelada ou concluída, novo preço acima de 110%, preço recusado
+mantendo o anterior, cancelar ou concluir duas vezes e tentar reativar uma venda
+encerrada (concluir uma cancelada e cancelar uma concluída).
 
-**Arquivos:**
+**Arquivos:** src/rocketicket/domain/model.py, tests/unit/test_venda.py
 
 **Decisões:**
+- Uma única exceção, VendaEncerrada, para qualquer operação em venda CANCELADA
+  ou CONCLUIDA, em vez de uma exceção por estado. A regra do domínio é a mesma
+  ("venda encerrada não muda mais"), e a mensagem já informa o status atual e a
+  ação que foi recusada.
+- A checagem fica em _exigir_ativa(), chamada na primeira linha de
+  alterar_preco(), cancelar() e concluir(). A regra fica em um lugar só, e a
+  validação acontece antes de qualquer mudança de estado: uma operação recusada
+  não deixa a venda pela metade, como os testes verificam conferindo que o preço
+  e o status continuam os mesmos.
+- Não existe um método reativar(). CANCELADA e CONCLUIDA são estados finais, e
+  os únicos caminhos que mexeriam no status de uma venda encerrada, cancelar() e
+  concluir(), também são bloqueados. Os testes de "reativar" cobrem exatamente
+  esses dois caminhos.
+- alterar_preco() respeita o mesmo teto de 110% da criação. Sem isso, bastaria
+  criar o anúncio com um preço válido e depois subir o preço para burlar a regra.
 
 ### Guilherme Boechat (@usuario-github)
 
@@ -146,13 +166,37 @@ tests/integration/test_orm.py
   em memória por ticket_id e StatusVenda.ATIVA, mantendo a paridade de
   comportamento exata com a consulta executada pelo SqlAlchemyVendaRepository no banco.
 
-### Miguel Duque (@usuario-github)
+### Miguel Duque (@miguelduq)
 
-**O que fiz:**
+**O que fiz:** em repository.py, criei a AbstractVendaRepository, que herda de
+AbstractRepository[model.Venda] e acrescenta get_ativa_por_ticket(ticket_id),
+e o SqlAlchemyVendaRepository, com add(), get() e get_ativa_por_ticket()
+usando a tabela vendas mapeada pelo Igor. Escrevi os testes de integração do
+repositório em test_venda_repository.py, contra o SQLite em memória: venda
+salva voltando campo a campo, get() de id inexistente, add() sem commit e
+get_ativa_por_ticket() ignorando vendas canceladas, concluídas e de outros
+tickets, além de achar a venda ativa quando o mesmo ticket tem uma venda antiga
+cancelada e uma nova.
 
-**Arquivos:**
+**Arquivos:** src/rocketicket/adapters/repository.py,
+tests/integration/test_venda_repository.py
 
 **Decisões:**
+- get_ativa_por_ticket() fica numa abstração própria da Venda
+  (AbstractVendaRepository), e não na AbstractRepository genérica, porque só a
+  Venda precisa dessa consulta. Assim o Fake também é obrigado a implementá-la:
+  o FakeVendaRepository herda dela. É essa consulta que o criar_pedido usa para
+  achar o anúncio ativo do ticket.
+- O SqlAlchemyVendaRepository recebe a sessão pronta no construtor e não importa
+  o SQLAlchemy no topo do arquivo. O conftest.py importa repository.py, e os
+  testes unitários não podem carregar o banco.
+- O repositório nunca faz commit: add() só entrega a venda à sessão, e quem
+  confirma a transação é o chamador. Um teste verifica isso fazendo add() e
+  rollback() e conferindo que a tabela continua vazia.
+- A venda ativa é filtrada no próprio banco, por ticket_id e status ATIVA, em
+  vez de carregar todas as vendas do ticket e filtrar em Python. Um ticket pode
+  acumular várias vendas encerradas ao longo das revendas, e só uma pode estar
+  ativa.
 
 ### Guilherme Boechat (@usuario-github)
 
@@ -247,7 +291,7 @@ tests/e2e/test_venda_api.py
   garantindo conversão estrita para Decimal antes de entrar no service e no
   domínio, eliminando qualquer risco de inconsistência de ponto flutuante.a aman
 
-### Miguel Duque (@usuario-github)
+### Miguel Duque (@miguelduq)
 
 **O que fiz:**
 
