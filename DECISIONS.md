@@ -86,13 +86,33 @@ encerrada (concluir uma cancelada e cancelar uma concluída).
 - alterar_preco() respeita o mesmo teto de 110% da criação. Sem isso, bastaria
   criar o anúncio com um preço válido e depois subir o preço para burlar a regra.
 
-### Guilherme Boechat (@usuario-github)
+### Guilherme Boechat (@guilhermeboechat)
 
-**O que fiz:**
+**O que fiz:** implementei o agregado Pedido em model.py: o Pagamento como
+entidade interna do Pedido, os enums StatusPagamento (PENDENTE, APROVADO,
+RECUSADO) e StatusPedido (ABERTO, CONFIRMADO, CANCELADO) e a raiz Pedido, com
+aprovar_pagamento(), recusar_pagamento(), confirmar() e cancelar(). Criei as
+exceções PagamentoJaProcessado, PagamentoNaoAprovado, TicketIndisponivel e
+PedidoEncerrado. Escrevi os testes unitários em test_pedido.py, cobrindo as
+transições válidas e as violações de invariante com pytest.raises.
 
-**Arquivos:**
+**Arquivos:** src/rocketicket/domain/model.py, tests/unit/test_pedido.py
 
 **Decisões:**
+- O Pagamento mora dentro do agregado Pedido e só muda pela raiz:
+  aprovar_pagamento() e recusar_pagamento() checam antes se o pedido ainda está
+  ABERTO. O Pagamento cuida só da própria regra, a de sair de PENDENTE uma única
+  vez, para APROVADO ou RECUSADO.
+- confirmar() recebe o status do ticket como parâmetro, em vez de acessar o
+  Ticket. O Pedido não enxerga outro agregado, então quem lê o ticket e passa o
+  status é o service. "Disponível para compra" é ANUNCIADO, e não DISPONIVEL,
+  que nenhum ticket alcança.
+- O Pedido tem um status próprio, separado do status do pagamento. A regra
+  "pedido confirmado ou cancelado não pode ser confirmado de novo nem ter o
+  pagamento alterado" fica num lugar só, em _exigir_aberto(), chamado no início
+  de cada operação.
+- Os testes chegam a todos os estados pela API do domínio, sem atribuir status
+  na mão, para continuarem válidos quando o agregado for encapsulado.
 
 ---
 
@@ -198,13 +218,36 @@ tests/integration/test_venda_repository.py
   acumular várias vendas encerradas ao longo das revendas, e só uma pode estar
   ativa.
 
-### Guilherme Boechat (@usuario-github)
+### Guilherme Boechat (@guilhermeboechat)
 
-**O que fiz:**
+**O que fiz:** criei as tabelas pedidos e pagamentos e a função
+_mapear_pedido() em orm.py, chamada no start_mappers(), com a relação
+pedido.pagamento. Em repository.py, criei o SqlAlchemyPedidoRepository com
+add() e get(), e no conftest.py o FakePedidoRepository. Em test_orm.py, escrevi
+a classe TestMapeamentoPedido: pedido salvo voltando campo a campo, pagamento
+voltando junto com o pedido, status gravados pelo valor do enum, valor voltando
+como Decimal e o banco recusando status inválido de pedido e de pagamento. Em
+test_pedido_repository.py, escrevi os testes do repositório contra o SQLite em
+memória: add() gravando pedido e pagamento, add() sem commit, get() trazendo o
+pagamento, get() de id inexistente e mudanças de estado persistidas após o
+commit.
 
-**Arquivos:**
+**Arquivos:** src/rocketicket/adapters/orm.py,
+src/rocketicket/adapters/repository.py, tests/conftest.py,
+tests/integration/test_orm.py, tests/integration/test_pedido_repository.py
 
 **Decisões:**
+- O Pagamento não tem id no domínio, então a chave da tabela pagamentos é o
+  próprio pedido_id (um pagamento por pedido). A FK pagamentos -> pedidos é
+  permitida porque liga duas tabelas do mesmo agregado; entre agregados
+  continuam só os IDs, sem FK.
+- A relação pedido.pagamento usa cascade="all, delete-orphan" e lazy="joined".
+  Salvar o Pedido salva o Pagamento, carregar o Pedido traz o Pagamento na mesma
+  consulta e não existe repositório de Pagamento: o agregado entra e sai inteiro
+  pela raiz.
+- O repositório tem só add() e get(), porque todos os casos de uso do Pedido
+  partem do id. Como os outros repositórios, ele nunca faz commit, e um teste
+  verifica isso com add() seguido de rollback().
 
 ---
 
@@ -299,11 +342,46 @@ tests/e2e/test_venda_api.py
 
 **Decisões:**
 
-### Guilherme Boechat (@usuario-github)
+### Guilherme Boechat (@guilhermeboechat)
 
-**O que fiz:**
+**O que fiz:** implementei os casos de uso criar_pedido, confirmar_pedido e
+cancelar_pedido em services.py, com a exceção PedidoJaExiste herdando de
+ErroDeServico. Escrevi os testes unitários em test_services_pedido.py usando só
+os Fakes, e adicionei a fixture fake_pedido_repository no conftest.py. No
+flask_app.py, criei os endpoints POST /pedidos, POST /pedidos/<id>/confirmacao e
+POST /pedidos/<id>/cancelamento e o helper _ler_booleano(). Escrevi os testes
+e2e em test_pedido_api.py, cobrindo criação, id repetido, ticket sem anúncio ou
+inexistente, campos faltando ou inválidos, pagamento aprovado e recusado,
+confirmação de pedido já confirmado ou cancelado e cancelamento repetido.
 
-**Arquivos:**
+**Arquivos:** src/rocketicket/service_layer/services.py,
+src/rocketicket/entrypoints/flask_app.py, tests/conftest.py,
+tests/unit/test_services_pedido.py, tests/e2e/test_pedido_api.py
 
 **Decisões:**
+- O valor do pedido vem do preço do anúncio ativo do ticket, buscado com
+  get_ativa_por_ticket(), e não do JSON. É o mesmo motivo do valor_original no
+  criar_anuncio: o comprador não pode escolher quanto vai pagar. Se o ticket não
+  tiver anúncio ativo, o service lança RecursoNaoEncontrado (404).
+- Ainda não há integração com um meio de pagamento, então o confirmar_pedido
+  recebe pagamento_aprovado (true ou false), que simula essa resposta. Se for
+  aprovado, o pagamento é aprovado e o pedido confirmado no mesmo commit; se o
+  ticket não estiver ANUNCIADO, o Pedido lança TicketIndisponivel e nada é
+  salvo, então dá para tentar de novo. Se for recusado, a recusa é salva e o
+  pedido continua ABERTO, mas não pode mais ser confirmado, só cancelado. A API
+  responde 200 nos dois casos, informando o resultado do pagamento, porque uma
+  recusa não é erro da requisição.
+- Na Fase 1, o service só lê o status do ticket e passa para o Pedido na
+  confirmação. Vender o ticket e concluir a venda fica para a Fase 2, pelo
+  evento PedidoConfirmado. Limitação conhecida até lá: depois de um pedido
+  confirmado, o ticket continua ANUNCIADO, e um segundo pedido do mesmo ticket
+  também pode ser confirmado.
+- Id de pedido repetido lança PedidoJaExiste (409); pedido ou ticket inexistente
+  lança RecursoNaoEncontrado (404); as violações do domínio (PedidoEncerrado,
+  PagamentoJaProcessado e TicketIndisponivel) viram 400 pelo tratamento central
+  de erros, sem try/except nas rotas. As rotas de ação seguem o formato
+  /pedidos/<id>/confirmacao e /pedidos/<id>/cancelamento, o mesmo de
+  /anuncios/<id>/cancelamento.
+- pagamento_aprovado precisa ser um booleano do JSON. Valores como "true", 1 ou
+  null são recusados com 400, para que nada ambíguo seja tratado como aprovação.
 
