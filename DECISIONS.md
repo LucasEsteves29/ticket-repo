@@ -385,3 +385,34 @@ tests/unit/test_services_pedido.py, tests/e2e/test_pedido_api.py
 - pagamento_aprovado precisa ser um booleano do JSON. Valores como "true", 1 ou
   null são recusados com 400, para que nada ambíguo seja tratado como aprovação.
 
+---
+
+# Parte 2 — Fase 2
+
+## fase2-checkpoint-1 — Arquitetura e ADRs
+
+### Miguel Duque (@miguelduq)
+
+**O que fiz:** escrevi a seção 5 do docs/arquitetura.md, com a arquitetura
+alternativa (Flask com Active Record), o diagrama em Mermaid comparando as duas,
+a tabela por atributo de qualidade e a conclusão. Escrevi também o ADR 0004, que
+registra a decisão da Fase 1 de criar a AbstractVendaRepository com
+get_ativa_por_ticket() em vez de colocar a consulta na AbstractRepository
+genérica.
+
+**Arquivos:** docs/arquitetura.md, docs/adr/0004-consulta-extra-em-abstracao-propria.md
+
+**Commits:** 3e42127
+
+**Decisão:** escolhi o Active Record como alternativa, e não CQRS ou eventos,
+porque é a alternativa mais simples que um grupo realmente usaria com Flask, e
+ela ataca exatamente o que a nossa arquitetura tem de mais caro (repositórios,
+Fakes e mapeamento separado). Assim a comparação mede o custo das camadas contra
+o que elas protegem: as regras da Venda e do Pedido.
+
+**Uso de IA:** usei o Claude (Anthropic) como assistente neste checkpoint. Ele
+leu o repositório (código, histórico de commits e o esqueleto do arquitetura.md)
+e redigiu um primeiro rascunho do ADR 0004 e da seção 5 a partir das decisões
+que eu tinha tomado na Fase 1. Eu revisei o texto, conferi os hashes e as
+afirmações sobre o código e ajustei o que não correspondia ao que fiz. A
+responsabilidade pelo conteúdo é minha.
