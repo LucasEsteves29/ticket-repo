@@ -391,6 +391,26 @@ tests/unit/test_services_pedido.py, tests/e2e/test_pedido_api.py
 
 ## fase2-checkpoint-1 — Arquitetura e ADRs
 
+### Lucas Esteves (@LucasEsteves29)
+
+**O que fiz:** criei os esqueletos do checkpoint 1: o docs/arquitetura.md com as
+seis seções e o responsável de cada uma, e o docs/adr/template.md com a numeração
+reservada dos ADRs. Escrevi o ADR 0001, que registra a decisão do mapeamento ORM
+imperativo, as alternativas descartadas e as consequências.
+
+**Arquivos:** docs/arquitetura.md, docs/adr/template.md,
+docs/adr/0001-mapeamento-orm-imperativo.md
+
+**Commits:** ccecc85 (esqueletos do arquitetura.md e do template de ADR)
+
+**Decisão:**
+- No ADR 0001, registrei as consequências negativas junto com as positivas,
+  inclusive a de que a leitura do banco não passa pelo __init__, o que expôs o
+  bug do teto de 110%. Mesmo com esses custos, a decisão continua aceita: o
+  domínio puro é o que permite testar as regras de negócio sem banco.
+- Cada seção do arquitetura.md traz, num comentário HTML, o que o enunciado exige
+  e quem é o responsável, para cada integrante saber o que entregar sem precisar
+  voltar ao enunciado.
 ### Miguel Duque (@miguelduq)
 
 **O que fiz:** escrevi a seção 5 do docs/arquitetura.md, com a arquitetura
