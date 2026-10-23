@@ -411,3 +411,28 @@ docs/adr/0001-mapeamento-orm-imperativo.md
 - Cada seção do arquitetura.md traz, num comentário HTML, o que o enunciado exige
   e quem é o responsável, para cada integrante saber o que entregar sem precisar
   voltar ao enunciado.
+### Miguel Duque (@miguelduq)
+
+**O que fiz:** escrevi a seção 5 do docs/arquitetura.md, com a arquitetura
+alternativa (Flask com Active Record), o diagrama em Mermaid comparando as duas,
+a tabela por atributo de qualidade e a conclusão. Escrevi também o ADR 0004, que
+registra a decisão da Fase 1 de criar a AbstractVendaRepository com
+get_ativa_por_ticket() em vez de colocar a consulta na AbstractRepository
+genérica.
+
+**Arquivos:** docs/arquitetura.md, docs/adr/0004-consulta-extra-em-abstracao-propria.md
+
+**Commits:** 3e42127
+
+**Decisão:** escolhi o Active Record como alternativa, e não CQRS ou eventos,
+porque é a alternativa mais simples que um grupo realmente usaria com Flask, e
+ela ataca exatamente o que a nossa arquitetura tem de mais caro (repositórios,
+Fakes e mapeamento separado). Assim a comparação mede o custo das camadas contra
+o que elas protegem: as regras da Venda e do Pedido.
+
+**Uso de IA:** usei o Claude (Anthropic) como assistente neste checkpoint. Ele
+leu o repositório (código, histórico de commits e o esqueleto do arquitetura.md)
+e redigiu um primeiro rascunho do ADR 0004 e da seção 5 a partir das decisões
+que eu tinha tomado na Fase 1. Eu revisei o texto, conferi os hashes e as
+afirmações sobre o código e ajustei o que não correspondia ao que fiz. A
+responsabilidade pelo conteúdo é minha.
