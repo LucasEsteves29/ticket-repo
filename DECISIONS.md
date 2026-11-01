@@ -436,3 +436,50 @@ e redigiu um primeiro rascunho do ADR 0004 e da seção 5 a partir das decisões
 que eu tinha tomado na Fase 1. Eu revisei o texto, conferi os hashes e as
 afirmações sobre o código e ajustei o que não correspondia ao que fiz. A
 responsabilidade pelo conteúdo é minha.
+
+---
+
+## fase2-checkpoint-2 — SOLID
+
+### Lucas Esteves (@LucasEsteves29)
+
+**O que fiz:** criei o docs/solid.md com a introdução do checkpoint e uma seção por
+integrante (Lucas, Caio, Igor, Miguel e Guilherme), cada uma com as partes "Antes" e
+"Depois" e um comentário com o que o enunciado exige em cada parte. Preenchi o "Antes" da
+minha seção, sobre o SRP no flask_app.py, usando o código do commit f85f2d4 (29/09). Nesse
+commit, o create_app() e o módulo acumulam quatro responsabilidades: montar o app e a sessão
+por requisição, traduzir exceções em códigos HTTP, validar e converter a entrada JSON
+(_ler_json, _ler_texto e _ler_decimal) e declarar as rotas de todos os agregados. Como
+evidência do problema, usei o histórico do arquivo: f85f2d4 (Lucas), e17c50a e 19cc75c
+(Igor) e 835565f (Guilherme) mexeram no mesmo arquivo por motivos diferentes, e o
+_ler_decimal e os tratadores de erro são compartilhados pelas rotas de mais de um agregado.
+Esta etapa é só de documentação: não alterei código, e a refatoração e a parte "Depois"
+ficam para o próximo commit.
+
+**Arquivos:** docs/solid.md, DECISIONS.md
+
+**Commits:** f85f2d4 (29/09, anterior a 06/10), que é o código "antes" usado no
+docs/solid.md. O hash deste commit de documentação entra aqui no commit da refatoração,
+porque um commit não consegue registrar o próprio hash.
+
+**Decisão:**
+- Usei como "antes" o f85f2d4, meu próprio commit de 29/09, e não o estado atual do
+  arquivo. A violação já está nele: a create_app() junta a sessão por requisição, os
+  tratadores de erro e as rotas, o módulo ainda guarda os helpers de leitura, e a função
+  reserva com comentários o lugar das rotas de Venda e de Pedido. Assim, o código criticado
+  é do meu módulo, e os commits seguintes do Igor (e17c50a e 19cc75c) e do Guilherme
+  (835565f) servem como evidência do problema, e não como código a corrigir.
+- O problema concreto se apoia só em dados do repositório (git log, git show --numstat,
+  git blame e git grep), com o comando citado ao lado de cada número, para que qualquer um
+  possa conferir. Como o histórico não mostra conflito de merge no arquivo, escrevi "risco
+  de conflito", e não que um conflito aconteceu.
+- Registrei o "antes" num commit só de documentação, sem mexer no código, com a suíte em
+  180 testes verdes. Esse número é a referência para mostrar, no "Depois", que a
+  refatoração não mudou o comportamento.
+
+**Uso de IA:** usei o Claude, como assistente nesta etapa
+do checkpoint. Ele leu o repositório (código, testes, documentação e histórico de commits),
+rodou os comandos de git citados no docs/solid.md e o pytest tests, e redigiu um primeiro
+rascunho do esqueleto do docs/solid.md, da parte "Antes" da minha seção. Eu revisei o
+texto, conferi os hashes, os números e as afirmações sobre o código e ajustei o que não
+correspondia ao que fiz.
