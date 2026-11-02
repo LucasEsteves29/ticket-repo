@@ -483,3 +483,18 @@ rodou os comandos de git citados no docs/solid.md e o pytest tests, e redigiu um
 rascunho do esqueleto do docs/solid.md, da parte "Antes" da minha seção. Eu revisei o
 texto, conferi os hashes, os números e as afirmações sobre o código e ajustei o que não
 correspondia ao que fiz.
+
+
+### Igor Leal (@igorbleal)
+
+O que fiz: preenchi a parte "Antes" da minha seção no docs/solid.md, documentando a violação do Princípio da Responsabilidade Única (SRP) na classe Venda (domain/model.py, commits cdd0311, 331685a e 186b52c) e o seu reflexo no serviço criar_anuncio (service_layer/services.py, commit 38e541d). Mostrei com o histórico do repositório (git log e git show --numstat) como a mistura entre o ciclo de vida do anúncio e o cálculo financeiro do teto de 110% fez três integrantes editarem a mesma classe e gerou a divergência temporária entre __init__() e alterar_preco() entre os commits 331685a e 186b52c. Nesta primeira etapa apenas documentei a violação; a refatoração e a seção "Depois" entram no próximo commit.
+
+Arquivos: docs/solid.md, DECISIONS.md
+
+Commits: 91ce98f (01/11, primeira versão do "Antes" da Venda), 331685a (24/09, código "antes" da Venda) e 38e541d (29/09, criar_anuncio).
+
+Decisão:
+
+Usei o commit 331685a (24/09, de minha autoria) como ponto central do "Antes" porque ele evidencia, no próprio histórico do Git, o efeito colateral de misturar cálculo de teto e ciclo de vida na mesma classe: ao atualizar a regra de truncamento do teto de 110%, foi preciso mexer dentro de Venda, e o método alterar_preco() precisou de um segundo commit (186b52c) para voltar a ficar consistente.
+
+Uso de IA: usei o assistente Antigravity (Google Gemini) para levantar os dados do histórico (git log e git show --numstat) do bloco da Venda e formatar a seção "Antes" seguindo a estrutura do docs/solid.md. Eu revisei o texto, conferi os hashes e os trechos de código. A responsabilidade pelo conteúdo é minha.
