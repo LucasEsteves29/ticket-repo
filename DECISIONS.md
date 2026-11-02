@@ -487,14 +487,37 @@ correspondia ao que fiz.
 
 ### Igor Leal (@igorbleal)
 
-O que fiz: preenchi a parte "Antes" da minha seção no docs/solid.md, documentando a violação do Princípio da Responsabilidade Única (SRP) na classe Venda (domain/model.py, commits cdd0311, 331685a e 186b52c) e o seu reflexo no serviço criar_anuncio (service_layer/services.py, commit 38e541d). Mostrei com o histórico do repositório (git log e git show --numstat) como a mistura entre o ciclo de vida do anúncio e o cálculo financeiro do teto de 110% fez três integrantes editarem a mesma classe e gerou a divergência temporária entre __init__() e alterar_preco() entre os commits 331685a e 186b52c. Nesta primeira etapa apenas documentei a violação; a refatoração e a seção "Depois" entram no próximo commit.
+**O que fiz:** preenchi o "Antes" da minha seção no docs/solid.md, sobre a violação do
+Princípio da Responsabilidade Única (SRP) na classe Venda em domain/model.py, usando o
+código do commit 331685a (24/09). Nesse commit, a entidade Venda acumula duas
+responsabilidades com motivos de mudança distintos: controlar o ciclo de vida e a
+identidade do anúncio (`__init__`, alterar_preco, cancelar, concluir e _exigir_ativa) e
+calcular e validar a política financeira do teto de revenda de 110% (_validar_preco com
+quantize e ROUND_DOWN). Como evidência do problema concreto, levantei o histórico do bloco
+da Venda em model.py: cdd0311 e 331685a (Igor), 0a468e7 (Miguel) e 186b52c (Lucas) editaram
+a mesma classe, e a mudança na regra de arredondamento em 331685a deixou alterar_preco()
+temporariamente divergente do `__init__()` até a correção em 186b52c. Esta etapa é só de
+documentação: não alterei código.
 
-Arquivos: docs/solid.md, DECISIONS.md
+**Arquivos:** docs/solid.md, DECISIONS.md
 
-Commits: 91ce98f (01/11, primeira versão do "Antes" da Venda), 331685a (24/09, código "antes" da Venda) e 38e541d (29/09, criar_anuncio).
+**Commits:** 331685a (24/09, anterior a 06/10), que é o código "antes" da Venda usado no
+docs/solid.md, e 91ce98f (01/11, rascunho inicial da seção). O hash deste commit de
+documentação entra aqui no commit da refatoração, porque um commit não consegue registrar
+o próprio hash.
 
-Decisão:
+**Decisão:**
+- Usei como "antes" o commit 331685a (24/09), de minha autoria, porque ele registra o
+  momento exato em que a mudança na regra financeira do teto de 110% obrigou a editar a
+  classe Venda e expôs a duplicação com alterar_preco(), corrigida depois em 186b52c.
+- Apoiei o problema concreto em dados verificáveis do repositório (git log,
+  git show --numstat, git blame -L 156,241 e git grep), citando os comandos junto aos
+  números no docs/solid.md para manter o mesmo padrão de evidência do documento.
+- Mantive este primeiro commit restrito à documentação, sem tocar em src/ ou tests/, para a refatoração do próximo commit.
 
-Usei o commit 331685a (24/09, de minha autoria) como ponto central do "Antes" porque ele evidencia, no próprio histórico do Git, o efeito colateral de misturar cálculo de teto e ciclo de vida na mesma classe: ao atualizar a regra de truncamento do teto de 110%, foi preciso mexer dentro de Venda, e o método alterar_preco() precisou de um segundo commit (186b52c) para voltar a ficar consistente.
-
-Uso de IA: usei o assistente Antigravity (Google Gemini) para levantar os dados do histórico (git log e git show --numstat) do bloco da Venda e formatar a seção "Antes" seguindo a estrutura do docs/solid.md. Eu revisei o texto, conferi os hashes e os trechos de código. A responsabilidade pelo conteúdo é minha.
+**Uso de IA:** usei o Antigravity (Google Gemini) como assistente nesta etapa do
+checkpoint. Ele consultou o histórico de commits de model.py e services.py, executou os
+comandos de git log, git show --numstat, git blame e git grep citados no docs/solid.md e
+redigiu um rascunho da parte "Antes" da minha seção. Eu revisei o texto, conferi os
+hashes, as linhas e as afirmações sobre o código e ajustei o que foi necessário. A
+responsabilidade pelo conteúdo é minha.
