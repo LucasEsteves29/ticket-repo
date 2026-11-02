@@ -195,7 +195,7 @@ O enunciado exige:
 - o custo da mudança e por que compensa.
 -->
 
-## Miguel — a definir
+## Miguel — ISP (`adapters/repository.py`)
 
 ### Antes
 
@@ -207,6 +207,69 @@ O enunciado exige:
 - o hash do commit anterior a 06/10;
 - o problema concreto que a violação causa.
 -->
+
+**Princípio violado:** ISP, o Princípio da Segregação de Interfaces. Um cliente não deve
+ser obrigado a depender de métodos que não usa.
+
+**Commits "antes":** `73b9847` (Miguel, 28/09/2026), que cria a `AbstractVendaRepository`,
+e `54e16d6` (Miguel, 28/09/2026), que cria o `SqlAlchemyVendaRepository`. O único cliente
+da consulta é o `criar_pedido`, do Guilherme, em `ec01929` (29/09/2026).
+
+**A violação.** A consulta `get_ativa_por_ticket()` foi criada para atender o Pedido, mas
+ficou presa dentro do repositório completo da Venda. Para usar só ela, o `criar_pedido`
+recebe uma interface que também sabe gravar e buscar vendas:
+
+```python
+# adapters/repository.py (73b9847 e 54e16d6)
+class AbstractVendaRepository(AbstractRepository[model.Venda]):
+    # herda add(venda) e get(id) da AbstractRepository
+
+    @abc.abstractmethod
+    def get_ativa_por_ticket(self, ticket_id: str) -> model.Venda | None:
+        raise NotImplementedError
+
+
+# service_layer/services.py (ec01929)
+def criar_pedido(
+    id, ticket_id, comprador_id,
+    repo_pedidos: AbstractRepository[model.Pedido],
+    repo_vendas: AbstractVendaRepository,      # depende de add, get e get_ativa_por_ticket
+    session,
+) -> str:
+    venda = repo_vendas.get_ativa_por_ticket(ticket_id)   # o único método usado
+    # (...) cria o Pedido com venda.preco e grava em repo_pedidos
+```
+
+| Método da `AbstractVendaRepository` | Usado pelo `criar_pedido`? |
+|---|---|
+| `add(venda)` | não |
+| `get(id)` | não |
+| `get_ativa_por_ticket(ticket_id)` | sim |
+
+A interface foi pensada para o agregado, e não para quem a usa. A própria docstring de
+`73b9847` mostra isso: ela diz que a consulta serve ao `criar_anuncio`, que nunca a chamou.
+O cliente real apareceu só no dia seguinte, em outro agregado.
+
+**Problema concreto.**
+
+- **O Pedido ganha acesso de escrita à Venda.** Pela regra de agregados do livro-texto, cada caso de uso
+  altera um agregado só. O `criar_pedido` precisa apenas *ler* o preço do anúncio ativo,
+  mas a assinatura entrega um objeto com `add()`. Nada no tipo impede que uma mudança
+  futura no service do Pedido grave ou altere vendas, misturando dois agregados na mesma
+  operação sem que ninguém perceba na revisão.
+- **Uma mudança de requisito plausível obrigaria a violar o LSP.** Imagine que a tela de
+  compra passe a mostrar o preço do anúncio ativo antes do pedido, lido de uma fonte só de
+  leitura (uma réplica do banco ou um cache de anúncios), para não carregar a sessão
+  principal. Essa fonte só sabe responder `get_ativa_por_ticket()`. Para entregá-la ao
+  `criar_pedido`, ela teria de herdar da `AbstractVendaRepository` e implementar `add()` e
+  `get()`, e a única implementação honesta de `add()` numa fonte só de leitura é lançar
+  `NotImplementedError`. Seria uma subclasse que não substitui a base, que é exatamente o
+  que o LSP proíbe. A interface larga força o erro em quem estende o sistema.
+- **Os testes do Pedido montam mais do que o service usa.** Os cinco testes de
+  `criar_pedido` em `tests/unit/test_services_pedido.py` usam o `FakeVendaRepository`
+  completo e chamam `add()` só para preparar o cenário. Um teste que quisesse um dublê
+  mínimo, com apenas a consulta, não conseguiria: o `abc` recusa instanciar uma
+  `AbstractVendaRepository` sem `add()` e `get()`.
 
 ### Depois
 
