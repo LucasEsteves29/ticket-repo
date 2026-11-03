@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 
 from rocketicket.domain.model import (
+    PoliticaTetoPercentual,
     PrecoAcimaDoLimite,
     StatusVenda,
     Venda,
@@ -199,3 +200,22 @@ class TestReativar:
         with pytest.raises(VendaEncerrada):
             venda.cancelar()
         assert venda.status is StatusVenda.CONCLUIDA
+
+class TestPoliticaTetoPercentual:
+    """Exercita o cálculo de teto isoladamente e a injeção da política na Venda."""
+    def test_calcular_limite_padrao_110_arredondado_para_baixo_sem_instanciar_venda(self):
+        politica = PoliticaTetoPercentual()
+        assert politica.calcular_limite(Decimal("99.99")) == Decimal("109.98")
+    def test_venda_com_politica_personalizada_sem_agio(self):
+        politica_sem_agio = PoliticaTetoPercentual(fator_limite=Decimal("1.00"))
+        venda = Venda(
+            id="v1",
+            ticket_id="t1",
+            vendedor_id="u1",
+            preco=Decimal("100.00"),
+            valor_original=Decimal("100.00"),
+            politica_preco=politica_sem_agio,
+        )
+        assert venda.preco == Decimal("100.00")
+        with pytest.raises(PrecoAcimaDoLimite):
+            venda.alterar_preco(Decimal("100.01"))
