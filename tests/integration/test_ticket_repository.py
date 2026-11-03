@@ -50,3 +50,26 @@ def test_sqlalchemy_repository_lista_tickets(session):
         "ticket-1",
         "ticket-2",
     ]
+
+
+def test_fake_repository_implementa_o_contrato(fake_ticket_repository):
+    primeiro = novo_ticket("ticket-1")
+    segundo = novo_ticket("ticket-2")
+
+    fake_ticket_repository.add(primeiro)
+    fake_ticket_repository.add(segundo)
+
+    assert fake_ticket_repository.get("ticket-1") is primeiro
+    assert fake_ticket_repository.get("ticket-inexistente") is None
+    assert [
+        ticket.id for ticket in fake_ticket_repository.list()
+    ] == ["ticket-1", "ticket-2"]
+
+
+def test_fake_repository_aceita_tickets_iniciais():
+    from conftest import FakeTicketRepository
+
+    ticket = novo_ticket("ticket-inicial")
+    repo = FakeTicketRepository([ticket])
+
+    assert repo.get("ticket-inicial") is ticket
