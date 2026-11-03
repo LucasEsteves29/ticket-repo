@@ -229,18 +229,105 @@ O enunciado exige:
 - o custo da mudança e por que compensa.
 -->
 
-## Igor — a definir
+## Igor — SRP (domain/model.py e service_layer/services.py)
 
 ### Antes
 
-<!--
-Responsável: Igor
-O enunciado exige:
-- o princípio violado;
-- o trecho do código;
-- o hash do commit anterior a 06/10;
-- o problema concreto que a violação causa.
--->
+**Princípio violado:** SRP, o Princípio da Responsabilidade Única. Uma classe deve ter um único motivo para mudar.
+
+**Commit "antes":** `331685a` (Igor Leal, 24/09/2026), `fix(venda): arredonda teto de 110% para baixo com quantize na criacao`. O código abaixo é o do bloco da `Venda` nesse commit (`git show 331685a:src/rocketicket/domain/model.py`, linhas 170 a 224).
+
+### A violação
+
+No commit `331685a`, a classe `Venda` ocupa as linhas 170 a 234 de `model.py`. Ela acumula duas responsabilidades, cada uma com um motivo de mudança diferente:
+
+| Responsabilidade | Onde fica em `331685a` | Muda quando |
+|---|---|---|
+| Controlar o ciclo de vida e a identidade do anúncio | `__init__()` (atributos e status inicial `StatusVenda.ATIVA`), `alterar_preco()`, `cancelar()`, `concluir()` e `_exigir_ativa()` (linhas 173 a 187 e 198 a 224) | Muda o ciclo de vida do anúncio: estados possíveis, regras de cancelamento ou conclusão |
+| Calcular e validar a política financeira do teto de revenda | `_validar_preco()` com o fator fixo `Decimal("1.10")` e o truncamento `quantize(Decimal("0.01"), rounding=ROUND_DOWN)` (linhas 189 a 196), além do cálculo repetido em `alterar_preco()` (linhas 201 a 205) | Muda a regra anti-cambismo: percentual máximo permitido, critério de arredondamento em centavos ou limite por tipo de ingresso |
+
+Trecho de `331685a` (as partes omitidas estão marcadas com `# (...)`):
+
+```python
+class Venda:
+    """Raiz do agregado Venda."""
+
+    def __init__(
+        self,
+        id: str,
+        ticket_id: str,
+        vendedor_id: str,
+        preco: Decimal,
+        valor_original: Decimal,
+    ):
+        self.id = id
+        self.ticket_id = ticket_id
+        self.vendedor_id = vendedor_id
+        self.valor_original = valor_original
+        self._validar_preco(preco)
+        self.preco = preco
+        self.status = StatusVenda.ATIVA
+
+    def _validar_preco(self, preco: Decimal) -> None:
+        limite_maximo = (self.valor_original * Decimal("1.10")).quantize(
+            Decimal("0.01"), rounding=ROUND_DOWN
+        )
+        if preco > limite_maximo:
+            raise PrecoAcimaDoLimite(
+                f"Preço {preco} excede o limite máximo permitido de 110% ({limite_maximo})"
+            )
+
+    def alterar_preco(self, novo_preco: Decimal) -> None:
+        """Troca o preço do anúncio, respeitando o mesmo limite de 110% da criação."""
+        self._exigir_ativa("ter o preço alterado")
+        limite_maximo = self.valor_original * Decimal("1.10")
+        if novo_preco > limite_maximo:
+            raise PrecoAcimaDoLimite(
+                f"Preço {novo_preco} excede o limite máximo permitido de 110% ({limite_maximo})"
+            )
+        self.preco = novo_preco
+
+    # (...) cancelar(), concluir() e _exigir_ativa()
+```
+
+### Problema concreto
+
+O histórico de `model.py` mostra três integrantes editando a classe `Venda` porque o ciclo de vida do anúncio e a fórmula financeira do teto de 110% moram na mesma classe:
+
+```text
+$ git log --format='%h %an %ad %s' --date=short -- src/rocketicket/domain/model.py
+be76d28 Miguel Bocanera 2026-09-29 fix(repository): correct typos in Venda repository and model documentation
+186b52c Lucas Esteves 2026-09-26 FIX: alterar_preco usa o mesmo teto de 110% do __init__
+331685a igorbleal 2026-09-24 fix(venda): arredonda teto de 110% para baixo com quantize na criacao
+0a468e7 Miguel Bocanera 2026-09-22 feat(venda): alterar_preco(), cancelar() e concluir() bloqueando venda encerrada
+cdd0311 igorbleal 2026-09-21 Feat: Criando entidade Venda
+```
+
+O que cada commit mudou na classe `Venda` (`git show --numstat` e o diff de cada um):
+
+| Commit | Autor | Linhas (+/−) | O que mudou | Responsabilidade tocada |
+|---|---|---|---|---|
+| `cdd0311` | Igor | +36 / −1 | cria `StatusVenda`, `PrecoAcimaDoLimite` e `Venda.__init__` com `valor_original * Decimal("1.10")` | ciclo de vida e política de teto |
+| `0a468e7` | Miguel | +31 / −0 | cria `VendaEncerrada`, `alterar_preco()`, `cancelar()`, `concluir()` e `_exigir_ativa()`, repetindo o cálculo de 1.10 em `alterar_preco()` | ciclo de vida e política de teto |
+| `331685a` | Igor | +12 / −9 | extrai `_validar_preco()` com `quantize(..., rounding=ROUND_DOWN)` chamado no `__init__`, mas `alterar_preco()` continua com o cálculo antigo | política de teto |
+| `186b52c` | Lucas | +1 / −5 | substitui o cálculo em `alterar_preco()` por `self._validar_preco(novo_preco)` | ciclo de vida e política de teto |
+
+Os commits `331685a` e `186b52c` mostram o problema na prática: quando a regra financeira do teto mudou para truncar centavos com `ROUND_DOWN` (`331685a`), a edição aconteceu dentro de `Venda`, e `alterar_preco()` continuou aplicando `self.valor_original * Decimal("1.10")` sem `quantize` até o commit `186b52c` corrigir a divergência dois dias depois.
+
+No HEAD, o bloco da `Venda` (linhas 156 a 241) divide a autoria entre três pessoas no `git blame`:
+
+```text
+$ git blame -L 156,241 --line-porcelain fbf6358 -- src/rocketicket/domain/model.py | grep '^author ' | sort | uniq -c
+    47 author igorbleal
+    38 author Miguel Bocanera
+    1 author Lucas Esteves
+```
+
+### Os efeitos
+
+- **Mudar a regra financeira do teto obriga a editar a entidade `Venda`.** O fator `Decimal("1.10")` e a chamada a `quantize(Decimal("0.01"), rounding=ROUND_DOWN)` estão embutidos dentro de `Venda._validar_preco()` (linhas 201 a 203 no HEAD). Qualquer ajuste na política de preço — como alterar o percentual permitido, mudar a regra de arredondamento ou exigir revenda pelo preço de face (100%, sem ágio) em lotes promocionais — exige modificar a classe que controla o ciclo de vida do anúncio.
+- **Não é possível consultar nem testar o cálculo do teto sem instanciar uma `Venda`.** A fórmula que calcula o preço máximo permitido para um `valor_original` não devolve o valor calculado: ela só existe dentro de `_validar_preco()`, acoplada ao lançamento de `PrecoAcimaDoLimite`. Nos testes (`git grep -h 'PrecoAcimaDoLimite' fbf6358 -- tests/`), as 11 ocorrências precisam criar uma instância inteira de `Venda` (ou chamar `criar_anuncio`) apenas para exercitar a aritmética do limite de 110%.
+- **Acoplamento no caso de uso `criar_anuncio`.** Em `service_layer/services.py` (commit `38e541d`, linhas 48 a 72 no HEAD), `criar_anuncio` instancia `model.Venda(...)` sem poder parametrizar a política de preço, prendendo o serviço a uma única regra fixa de 110%.
 
 ### Depois
 

@@ -168,7 +168,13 @@ class VendaEncerrada(ErroDeDominio):
 
 
 class Venda:
-    """Raiz do agregado Venda."""
+    """Raiz do agregado Venda: o anúncio de revenda de um ticket.
+
+    Nasce ATIVA e termina em CANCELADA (o vendedor desistiu) ou CONCLUIDA (o
+    ticket foi vendido). Os dois estados finais não voltam a ATIVA nem aceitam
+    novo preço. O preço nunca passa de 110% do valor original do ticket, nem na
+    criação nem em alterar_preco().
+    """
 
     def __init__(
         self,
@@ -187,6 +193,11 @@ class Venda:
         self.status = StatusVenda.ATIVA
 
     def _validar_preco(self, preco: Decimal) -> None:
+        """Recusa preço acima de 110% do valor original.
+
+        O teto é arredondado para baixo em centavos, para nunca passar dos 110%:
+        valor original 99,99 dá teto de 109,98 (e não 109,99).
+        """
         limite_maximo = (self.valor_original * Decimal("1.10")).quantize(
             Decimal("0.01"), rounding=ROUND_DOWN
         )

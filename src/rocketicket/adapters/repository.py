@@ -58,9 +58,9 @@ class SqlAlchemyTicketRepository(AbstractRepository[model.Ticket]):
 
 class AbstractVendaRepository(AbstractRepository[model.Venda]):
     """
-    Repositorio de Venda: além de add() e get(), acha o anúncio ativo de um ticket.
+    Repositório de Venda: além de add() e get(), acha o anúncio ativo de um ticket.
 
-    É por aqui que criar_anuncio descobe se o ticket já tem um anúncio ATIVA
+    É por aqui que criar_anuncio descobre se o ticket já tem uma venda ATIVA
     antes de abrir outro.
     """
 
@@ -70,5 +70,45 @@ class AbstractVendaRepository(AbstractRepository[model.Venda]):
         raise NotImplementedError
 
 
+class SqlAlchemyVendaRepository(AbstractVendaRepository):
+    """Venda persistida com SQLAlchemy.
+
+    Recebe a sessão pronta e não importa o SQLAlchemy: o conftest.py importa este
+    módulo, e os testes unitários não podem carregar o banco. Não faz commit.
+    """
+
+    def __init__(self, session):
+        self.session = session
+
+    def add(self, venda: model.Venda) -> None:
+        self.session.add(venda)
+
+    def get(self, id: str) -> model.Venda | None:
+        return self.session.get(model.Venda, id)
+
+    def get_ativa_por_ticket(self, ticket_id: str) -> model.Venda | None:
+        return (
+            self.session.query(model.Venda)
+            .filter_by(ticket_id=ticket_id, status=model.StatusVenda.ATIVA)
+            .first()
+        )
+
+
 # Pedido — Guilherme
-# Repositório concreto de model.Pedido, herdando AbstractRepository[model.Pedido].
+
+
+class SqlAlchemyPedidoRepository(AbstractRepository[model.Pedido]):
+    """Persistência de pedidos (com o Pagamento dentro) usando uma sessão SQLAlchemy.
+
+    O Pagamento não tem repositório próprio: ele vai e volta junto com o Pedido,
+    pelo cascade do mapeamento em orm.py.
+    """
+
+    def __init__(self, session):
+        self.session = session
+
+    def add(self, pedido: model.Pedido) -> None:
+        self.session.add(pedido)
+
+    def get(self, id: str) -> model.Pedido | None:
+        return self.session.get(model.Pedido, id)

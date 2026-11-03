@@ -5,7 +5,7 @@ from rocketicket.adapters.repository import (
 )
 from rocketicket.domain import model
 
-# imports dentro das fixtures: os testes unitários não podem carregar o SQLAlchemy
+# imports dentro das fixtures: unitários não podem carregar SQLAlchemy nem Flask
 
 
 @pytest.fixture
@@ -32,6 +32,29 @@ def session(in_memory_db):
     sessao.close()
     clear_mappers()
 
+
+@pytest.fixture
+def client(in_memory_db):
+    from sqlalchemy.orm import clear_mappers, sessionmaker
+
+    from rocketicket.entrypoints.flask_app import create_app
+
+    app = create_app(sessionmaker(bind=in_memory_db))
+    app.testing = True
+    yield app.test_client()
+    clear_mappers()
+
+
+class FakeSession:
+    committed = False
+
+    def commit(self):
+        self.committed = True
+
+
+@pytest.fixture
+def fake_session():
+    return FakeSession()
 
 class FakeTicketRepository(AbstractRepository[model.Ticket]):
     """Implementação em memória do repositório de Ticket."""
@@ -74,3 +97,24 @@ class FakeVendaRepository(AbstractVendaRepository):
             ),
             None,
         )
+@pytest.fixture
+def fake_venda_repository():
+    return FakeVendaRepository()
+
+
+class FakePedidoRepository(AbstractRepository[model.Pedido]):
+
+
+    def __init__(self, pedidos=None):
+        self._pedidos = set(pedidos or [])
+
+    def add(self, pedido: model.Pedido) -> None:
+        self._pedidos.add(pedido)
+
+    def get(self, id: str) -> model.Pedido | None:
+        return next((p for p in self._pedidos if p.id == id), None)
+
+
+@pytest.fixture
+def fake_pedido_repository():
+    return FakePedidoRepository()
