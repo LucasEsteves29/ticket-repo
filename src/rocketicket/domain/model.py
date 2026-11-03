@@ -9,6 +9,7 @@ exceções e a raiz do próprio agregado.
 
 from decimal import Decimal, ROUND_DOWN
 from enum import Enum
+from typing import Iterable, Protocol
 
 
 class ErroDeDominio(Exception):
@@ -269,6 +270,40 @@ class PedidoEncerrado(ErroDeDominio):
     """Tentativa de mexer em um pedido já confirmado ou cancelado."""
 
 
+class RegraDeConfirmacao(Protocol):
+    """Contrato para uma regra aplicada antes de confirmar um Pedido."""
+
+    def validar(self, pedido: "Pedido", status_ticket: StatusTicket) -> None:
+        ...
+
+
+class PagamentoAprovadoParaConfirmacao:
+    """Exige que o pagamento esteja aprovado antes da confirmação."""
+
+    def validar(self, pedido: "Pedido", status_ticket: StatusTicket) -> None:
+        if pedido.pagamento.status is not StatusPagamento.APROVADO:
+            raise PagamentoNaoAprovado(
+                f"pedido {pedido.id} tem pagamento {pedido.pagamento.status.value}"
+            )
+
+
+class TicketAnunciadoParaConfirmacao:
+    """Exige que o ticket esteja anunciado antes da confirmação."""
+
+    def validar(self, pedido: "Pedido", status_ticket: StatusTicket) -> None:
+        if status_ticket is not StatusTicket.ANUNCIADO:
+            raise TicketIndisponivel(
+                f"ticket {pedido.ticket_id} não está à venda "
+                f"(status: {status_ticket.value})"
+            )
+
+
+REGRAS_DE_CONFIRMACAO_PADRAO = (
+    PagamentoAprovadoParaConfirmacao(),
+    TicketAnunciadoParaConfirmacao(),
+)
+
+
 class Pagamento:
     """O pagamento do pedido. Mora dentro do Pedido, nao sai de la sozinho.
 
@@ -302,12 +337,22 @@ class Pedido:
     estados finais. Todo acesso ao Pagamento passa por aqui.
     """
 
-    def __init__(self, id: str, ticket_id: str, comprador_id: str, valor: Decimal):
+    def __init__(
+        self,
+        id: str,
+        ticket_id: str,
+        comprador_id: str,
+        valor: Decimal,
+        regras_confirmacao: Iterable[RegraDeConfirmacao] = None,
+    ):
         self.id = id
         self.ticket_id = ticket_id
         self.comprador_id = comprador_id
         self.pagamento = Pagamento(valor)
         self.status = StatusPedido.ABERTO
+        self._regras_confirmacao = tuple(
+            regras_confirmacao or REGRAS_DE_CONFIRMACAO_PADRAO
+        )
 
     def aprovar_pagamento(self) -> None:
         self._exigir_aberto("ter o pagamento alterado")
@@ -325,14 +370,9 @@ class Pedido:
         inalcançável e não serve para essa checagem.
         """
         self._exigir_aberto("ser confirmado")
-        if self.pagamento.status is not StatusPagamento.APROVADO:
-            raise PagamentoNaoAprovado(
-                f"pedido {self.id} tem pagamento {self.pagamento.status.value}"
-            )
-        if status_ticket is not StatusTicket.ANUNCIADO:
-            raise TicketIndisponivel(
-                f"ticket {self.ticket_id} não está à venda (status: {status_ticket.value})"
-            )
+        regras = getattr(self, "_regras_confirmacao", REGRAS_DE_CONFIRMACAO_PADRAO)
+        for regra in regras:
+            regra.validar(self, status_ticket)
         self.status = StatusPedido.CONFIRMADO
 
     def cancelar(self) -> None:

@@ -12,11 +12,13 @@ import pytest
 from rocketicket.domain.model import (
     PagamentoJaProcessado,
     PagamentoNaoAprovado,
+    PagamentoAprovadoParaConfirmacao,
     Pedido,
     PedidoEncerrado,
     StatusPagamento,
     StatusPedido,
     StatusTicket,
+    TicketAnunciadoParaConfirmacao,
     TicketIndisponivel,
 )
 
@@ -132,6 +134,27 @@ class TestConfirmar:
     def test_confirmar_pedido_cancelado_falha(self):
         pedido = cancelado()
         with pytest.raises(PedidoEncerrado):
+            pedido.confirmar(StatusTicket.ANUNCIADO)
+
+    def test_confirmar_aceita_regra_nova_sem_alterar_pedido(self):
+        class RegraDeTeste:
+            def validar(self, pedido, status_ticket):
+                raise RuntimeError("regra adicional aplicada")
+
+        pedido = Pedido(
+            id="p1",
+            ticket_id="t1",
+            comprador_id="u2",
+            valor=VALOR,
+            regras_confirmacao=[
+                PagamentoAprovadoParaConfirmacao(),
+                TicketAnunciadoParaConfirmacao(),
+                RegraDeTeste(),
+            ],
+        )
+        pedido.aprovar_pagamento()
+
+        with pytest.raises(RuntimeError, match="regra adicional aplicada"):
             pedido.confirmar(StatusTicket.ANUNCIADO)
 
 
