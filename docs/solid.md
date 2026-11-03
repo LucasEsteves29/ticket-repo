@@ -1,4 +1,4 @@
- SOLID no RocketTicket
+# SOLID no RocketTicket
 
 Documento do checkpoint 2 da Fase 2 (tag `fase2-checkpoint-2`, prazo 03/11/2026 às 23h59 BRT).
 
@@ -172,6 +172,8 @@ O enunciado exige:
 -->
 
 ## Igor — SRP (domain/model.py e service_layer/services.py)
+
+### Antes
 
 **Princípio violado:** SRP, o Princípio da Responsabilidade Única. Uma classe deve ter um único motivo para mudar.
 
