@@ -487,24 +487,32 @@ correspondia ao que fiz.
 
 ### Igor Leal (@igorbleal)
 
-**O que fiz:** preenchi o "Antes" da minha seção no docs/solid.md, sobre a violação do
-Princípio da Responsabilidade Única (SRP) na classe Venda em domain/model.py, usando o
-código do commit 331685a (24/09). Nesse commit, a entidade Venda acumula duas
-responsabilidades com motivos de mudança distintos: controlar o ciclo de vida e a
-identidade do anúncio (`__init__`, alterar_preco, cancelar, concluir e _exigir_ativa) e
-calcular e validar a política financeira do teto de revenda de 110% (_validar_preco com
-quantize e ROUND_DOWN). Como evidência do problema concreto, levantei o histórico do bloco
-da Venda em model.py: cdd0311 e 331685a (Igor), 0a468e7 (Miguel) e 186b52c (Lucas) editaram
-a mesma classe, e a mudança na regra de arredondamento em 331685a deixou alterar_preco()
-temporariamente divergente do `__init__()` até a correção em 186b52c. Esta etapa é só de
-documentação: não alterei código.
+**O que fiz:** na primeira etapa deste checkpoint, preenchi o "Antes" da minha seção no
+docs/solid.md, sobre a violação do Princípio da Responsabilidade Única (SRP) na classe
+Venda em domain/model.py, usando o código do commit 331685a (24/09). Nesse commit, a
+entidade Venda acumula duas responsabilidades com motivos de mudança distintos: controlar
+o ciclo de vida e a identidade do anúncio (`__init__`, alterar_preco, cancelar, concluir e
+_exigir_ativa) e calcular e validar a política financeira do teto de revenda de 110%
+(_validar_preco com quantize e ROUND_DOWN). Como evidência do problema concreto, levantei
+o histórico do bloco da Venda em model.py: cdd0311 e 331685a (Igor), 0a468e7 (Miguel) e
+186b52c (Lucas) editaram a mesma classe, e a mudança na regra de arredondamento em 331685a
+deixou alterar_preco() temporariamente divergente do `__init__()` até a correção em
+186b52c. Na segunda etapa, realizei a refatoração extraindo o cálculo e a validação do
+teto para a classe PoliticaTetoPercentual em domain/model.py (com os métodos
+calcular_limite() e validar()), atualizei Venda e o caso de uso criar_anuncio em
+service_layer/services.py para delegarem a validação à política de preço, adicionei os
+testes unitários em tests/unit/test_venda.py e tests/unit/test_services_venda.py e
+preenchi a seção "Depois" no docs/solid.md.
 
-**Arquivos:** docs/solid.md, DECISIONS.md
+**Arquivos:** docs/solid.md, src/rocketicket/domain/model.py,
+src/rocketicket/service_layer/services.py, tests/unit/test_venda.py,
+tests/unit/test_services_venda.py, DECISIONS.md
 
-**Commits:** 331685a (24/09, anterior a 06/10), que é o código "antes" da Venda usado no
-docs/solid.md, e 91ce98f (01/11, rascunho inicial da seção). O hash deste commit de
-documentação entra aqui no commit da refatoração, porque um commit não consegue registrar
-o próprio hash.
+**Commits:** 331685a (24/09, anterior a 06/10, código "antes" da Venda usado no
+docs/solid.md), 91ce98f (01/11, rascunho inicial da seção "Antes"), fd6e50d, 81ff350,
+cad3eef e adf83e5 (02/11, documentação do "Antes" no docs/solid.md e no DECISIONS.md) e
+576af01 (03/11, refatoração extraindo PoliticaTetoPercentual e testes
+unitários).
 
 **Decisão:**
 - Usei como "antes" o commit 331685a (24/09), de minha autoria, porque ele registra o
@@ -513,11 +521,21 @@ o próprio hash.
 - Apoiei o problema concreto em dados verificáveis do repositório (git log,
   git show --numstat, git blame -L 156,241 e git grep), citando os comandos junto aos
   números no docs/solid.md para manter o mesmo padrão de evidência do documento.
-- Mantive este primeiro commit restrito à documentação, sem tocar em src/ ou tests/, para a refatoração do próximo commit.
+- Mantive o primeiro commit restrito à documentação, sem tocar em src/ ou tests/, servindo
+  de linha de base para a refatoração do segundo commit.
+- Na refatoração, declarei politica_preco = PoliticaTetoPercentual() também como atributo
+  de classe em Venda, além do parâmetro opcional no `__init__()`. Como o mapeamento
+  imperativo do SQLAlchemy (adapters/orm.py) reconstrói entidades carregadas do banco sem
+  chamar `__init__()`, o atributo de classe garante que chamar alterar_preco() em uma Venda
+  vinda da sessão continue funcionando sem exigir novas colunas na tabela vendas.
+- Mantive PoliticaTetoPercentual() (110%) como valor padrão tanto em Venda quanto em
+  criar_anuncio para que toda a suíte existente continuasse passando sem alterações, e
+  acrescentei 3 testes novos exercitando o cálculo isolado do limite e uma política sem
+  ágio (100%).
 
-**Uso de IA:** usei o Antigravity (Google Gemini) como assistente nesta etapa do
-checkpoint. Ele consultou o histórico de commits de model.py e services.py, executou os
-comandos de git log, git show --numstat, git blame e git grep citados no docs/solid.md e
-redigiu um rascunho da parte "Antes" da minha seção. Eu revisei o texto, conferi os
-hashes, as linhas e as afirmações sobre o código e ajustei o que foi necessário. A
-responsabilidade pelo conteúdo é minha.
+**Uso de IA:** usei o Antigravity (Google Gemini) como assistente nas duas etapas do checkpoint. 
+Na primeira, ele levantou o histórico de git de model.py e services.py e redigiu o rascunho do 
+“Antes”. Na segunda, ajudou a estruturar a extração da PoliticaTetoPercentual preservando a 
+compatibilidade com o mapeamento do SQLAlchemy, sugeriu os testes unitários e redigiu o rascunho
+ do “Depois”. Eu revisei o código e o texto, executei a suíte com pytest e conferi hashes, linhas 
+ e afirmações. A responsabilidade pelo conteúdo é minha.

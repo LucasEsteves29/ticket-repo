@@ -339,6 +339,84 @@ O enunciado exige:
 - como os testes garantiram que o comportamento não mudou;
 - o custo da mudança e por que compensa.
 -->
+**Commit "depois":** `576af01` (Igor Leal, 03/11/2026), `refactor(venda): extrai PoliticaTetoPercentual aplicando SRP no agregado Venda`.
+
+### O que mudou
+
+Extraí o cálculo e a validação do teto de revenda de dentro da entidade `Venda` para uma classe dedicada no domínio, `PoliticaTetoPercentual` (`src/rocketicket/domain/model.py`), e permiti parametrizar a política tanto em `Venda.__init__()` quanto no caso de uso `criar_anuncio()` (`src/rocketicket/service_layer/services.py`), mantendo o teto de 110% como valor padrão:
+
+| Responsabilidade | Onde fica depois da refatoração | Muda quando |
+|---|---|---|
+| Controlar o ciclo de vida e a identidade do anúncio | `Venda` (`domain/model.py`): `__init__()`, `alterar_preco()`, `cancelar()`, `concluir()` e `_exigir_ativa()` | muda o ciclo de vida do anúncio: estados possíveis, regras de cancelamento ou conclusão |
+| Calcular e validar a política financeira do teto de revenda | `PoliticaTetoPercentual` (`domain/model.py`): `calcular_limite(valor_original)` e `validar(preco, valor_original)` | muda a regra anti-cambismo: fator percentual, arredondamento em centavos ou teto customizado por tipo de ingresso |
+
+Trecho refatorado em `src/rocketicket/domain/model.py`:
+
+```python
+class PoliticaTetoPercentual:
+    FATOR_PADRAO = Decimal("1.10")
+    CENTAVO = Decimal("0.01")
+
+    def __init__(self, fator_limite: Decimal = FATOR_PADRAO):
+        self.fator_limite = fator_limite
+
+    def calcular_limite(self, valor_original: Decimal) -> Decimal:
+        return (valor_original * self.fator_limite).quantize(
+            self.CENTAVO, rounding=ROUND_DOWN
+        )
+
+    def validar(self, preco: Decimal, valor_original: Decimal) -> None:
+        limite_maximo = self.calcular_limite(valor_original)
+        if preco > limite_maximo:
+            percentual = int(self.fator_limite * 100)
+            raise PrecoAcimaDoLimite(
+                f"Preço {preco} excede o limite máximo permitido de {percentual}% ({limite_maximo})"
+            )
+
+
+class Venda:
+    politica_preco: PoliticaTetoPercentual = PoliticaTetoPercentual()
+
+    def __init__(
+        self,
+        id: str,
+        ticket_id: str,
+        vendedor_id: str,
+        preco: Decimal,
+        valor_original: Decimal,
+        politica_preco: PoliticaTetoPercentual | None = None,
+    ):
+        self.id = id
+        self.ticket_id = ticket_id
+        self.vendedor_id = vendedor_id
+        self.valor_original = valor_original
+        if politica_preco is not None:
+            self.politica_preco = politica_preco
+        self._validar_preco(preco)
+        self.preco = preco
+        self.status = StatusVenda.ATIVA
+
+    def _validar_preco(self, preco: Decimal) -> None:
+        self.politica_preco.validar(preco, self.valor_original)
+```
+
+O que cada problema apontado no "Antes" passou a ter:
+
+- **Motivos de mudança separados:** alterar a regra financeira (fator ou arredondamento) edita apenas `PoliticaTetoPercentual`, sem tocar nos métodos de estado da `Venda`.
+- **Cálculo consultável e testável sem instanciar `Venda`:** o método `PoliticaTetoPercentual().calcular_limite(valor_original)` devolve diretamente o `Decimal` do teto truncado (ex.: 99.99 -> 109.98).
+- **Extensão no `criar_anuncio`:** o serviço aceita `politica_preco` opcional e o repassa à `Venda`, permitindo aplicar limites diferenciados (ex.: `fator_limite=Decimal("1.00")` para revenda pelo valor facial sem ágio) sem alterar `Venda`.
+
+### Como os testes garantiram que o comportamento não mudou
+
+- Todos os testes existentes da suíte da Fase 1 e da Fase 2 (`test_venda.py`, `test_services_venda.py`, `test_orm.py`, `test_venda_repository.py` e `test_venda_api.py`) continuaram passando sem alterar nenhuma chamada pré-existente, pois `politica_preco` tem `PoliticaTetoPercentual()` (110%) como padrão.
+- Declarar `politica_preco = PoliticaTetoPercentual()` como atributo de classe em `Venda` preservou o funcionamento do mapeamento imperativo do SQLAlchemy (`adapters/orm.py`): quando o ORM reconstrói uma `Venda` lida do banco sem chamar `__init__()`, o atributo de classe garante que `venda.alterar_preco()` continue encontrando `self.politica_preco`.
+- Foram adicionados 3 testes novos exercitando a refatoração: 2 em `TestPoliticaTetoPercentual` (`tests/unit/test_venda.py`), cobrindo `calcular_limite()` sem instanciar `Venda` e uma `Venda` com política sem ágio (1.00), e 1 em `TestCriarAnuncio` (`tests/unit/test_services_venda.py`), verificando a passagem de `politica_preco` pelo serviço.
+
+### Custo da mudança e por que compensa
+
+- **Custo:** uma classe a mais em `domain/model.py` (`PoliticaTetoPercentual`), um passo de delegação em `Venda._validar_preco()` e um parâmetro opcional adicional nas assinaturas de `Venda.__init__()` e `services.criar_anuncio()`.
+- **Por que compensa:** o cálculo do teto de revenda com `Decimal` e `ROUND_DOWN` é a principal invariante financeira da `Venda` (ADR 0003). Isolá-lo em `PoliticaTetoPercentual` elimina a mistura de responsabilidades que levou aos commits `331685a` e `186b52c` na Fase 1, permite testar e consultar o limite máximo diretamente sem criar anúncios falsos e abre caminho para variar a política de teto sem modificar a entidade `Venda`.
+
 
 ## Miguel — ISP (`adapters/repository.py`)
 
