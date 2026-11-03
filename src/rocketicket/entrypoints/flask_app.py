@@ -1,10 +1,13 @@
-from decimal import Decimal, InvalidOperation
-
-from flask import Flask, abort, g, request
-from werkzeug.exceptions import HTTPException
+from flask import Flask, g
 
 from rocketicket.adapters import orm, repository
-from rocketicket.domain import model
+from rocketicket.entrypoints.entrada import (
+    ler_booleano,
+    ler_decimal,
+    ler_json,
+    ler_texto,
+)
+from rocketicket.entrypoints.erros import registrar_tratamento_de_erros
 from rocketicket.service_layer import services
 
 CAMPOS_TICKET = ("id", "evento_id", "valor_original", "dono_id")
@@ -26,30 +29,16 @@ def create_app(session_factory):
         if session is not None:
             session.close()
 
-    @app.errorhandler(model.ErroDeDominio)
-    def erro_de_dominio(e):
-        return {"erro": str(e)}, 400
-
-    @app.errorhandler(services.ErroDeServico)
-    def erro_de_servico(e):
-        return {"erro": str(e)}, 409
-
-    @app.errorhandler(services.RecursoNaoEncontrado)
-    def recurso_nao_encontrado(e):
-        return {"erro": str(e)}, 404
-
-    @app.errorhandler(HTTPException)
-    def erro_http(e):
-        return {"erro": e.description}, e.code
+    registrar_tratamento_de_erros(app)
 
     @app.post("/tickets")
     def emitir_ticket():
-        dados = _ler_json(CAMPOS_TICKET)
+        dados = ler_json(CAMPOS_TICKET)
         ticket_id = services.emitir_ticket(
-            _ler_texto(dados, "id"),
-            _ler_texto(dados, "evento_id"),
-            _ler_decimal(dados, "valor_original"),
-            _ler_texto(dados, "dono_id"),
+            ler_texto(dados, "id"),
+            ler_texto(dados, "evento_id"),
+            ler_decimal(dados, "valor_original"),
+            ler_texto(dados, "dono_id"),
             repository.SqlAlchemyTicketRepository(g.session),
             g.session,
         )
@@ -58,12 +47,12 @@ def create_app(session_factory):
     # endpoints de Venda: Igor
     @app.post("/anuncios")
     def criar_anuncio():
-        dados = _ler_json(CAMPOS_ANUNCIO)
+        dados = ler_json(CAMPOS_ANUNCIO)
         venda_id = services.criar_anuncio(
-            _ler_texto(dados, "id"),
-            _ler_texto(dados, "ticket_id"),
-            _ler_texto(dados, "vendedor_id"),
-            _ler_decimal(dados, "preco"),
+            ler_texto(dados, "id"),
+            ler_texto(dados, "ticket_id"),
+            ler_texto(dados, "vendedor_id"),
+            ler_decimal(dados, "preco"),
             repository.SqlAlchemyVendaRepository(g.session),
             repository.SqlAlchemyTicketRepository(g.session),
             g.session,
@@ -73,11 +62,11 @@ def create_app(session_factory):
     # endpoints de Pedido: Guilherme
     @app.post("/pedidos")
     def criar_pedido():
-        dados = _ler_json(CAMPOS_PEDIDO)
+        dados = ler_json(CAMPOS_PEDIDO)
         pedido_id = services.criar_pedido(
-            _ler_texto(dados, "id"),
-            _ler_texto(dados, "ticket_id"),
-            _ler_texto(dados, "comprador_id"),
+            ler_texto(dados, "id"),
+            ler_texto(dados, "ticket_id"),
+            ler_texto(dados, "comprador_id"),
             repository.SqlAlchemyPedidoRepository(g.session),
             repository.SqlAlchemyVendaRepository(g.session),
             g.session,
@@ -86,8 +75,8 @@ def create_app(session_factory):
 
     @app.post("/pedidos/<pedido_id>/confirmacao")
     def confirmar_pedido(pedido_id):
-        dados = _ler_json(CAMPOS_CONFIRMACAO)
-        aprovado = _ler_booleano(dados, "pagamento_aprovado")
+        dados = ler_json(CAMPOS_CONFIRMACAO)
+        aprovado = ler_booleano(dados, "pagamento_aprovado")
         services.confirmar_pedido(
             pedido_id,
             aprovado,
@@ -107,35 +96,3 @@ def create_app(session_factory):
         return {"id": pedido_id}, 200
 
     return app
-
-
-def _ler_json(campos):
-    dados = request.get_json(silent=True)
-    if not isinstance(dados, dict):
-        abort(400, "o corpo precisa ser um objeto JSON")
-    faltando = [campo for campo in campos if campo not in dados]
-    if faltando:
-        abort(400, f"campos obrigatórios: {', '.join(faltando)}")
-    return dados
-
-
-def _ler_texto(dados, campo):
-    if not isinstance(dados[campo], str) or not dados[campo]:
-        abort(400, f"{campo} precisa ser um texto não vazio")
-    return dados[campo]
-
-
-def _ler_booleano(dados, campo):
-    if not isinstance(dados[campo], bool):
-        abort(400, f"{campo} precisa ser true ou false")
-    return dados[campo]
-
-
-def _ler_decimal(dados, campo):
-    try:
-        valor = Decimal(dados[campo]) if isinstance(dados[campo], str) else None
-    except InvalidOperation:
-        valor = None
-    if valor is None or not valor.is_finite() or valor.as_tuple().exponent < -2:
-        abort(400, f"{campo} inválido")
-    return valor

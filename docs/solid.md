@@ -147,6 +147,92 @@ O enunciado exige:
 - o custo da mudança e por que compensa.
 -->
 
+**Commit "depois":** `[hash]` (Lucas Esteves, 03/11/2026).
+
+**O que mudou.** Das quatro responsabilidades listadas no "Antes", duas saíram do
+`flask_app.py` para módulos próprios em `entrypoints/`. O código foi movido sem mudar nenhuma
+regra: os tratadores têm os mesmos códigos e o mesmo corpo `{"erro": ...}`, e os helpers de
+leitura só perderam o `_` do nome, porque agora são usados fora do módulo.
+
+| Responsabilidade | Onde fica agora | Muda quando |
+|---|---|---|
+| Validar e converter a entrada JSON | `entrada.py` (49 linhas): `ler_json`, `ler_texto`, `ler_booleano` e `ler_decimal` | muda a regra de entrada, como o formato aceito para dinheiro |
+| Traduzir exceções em códigos HTTP | `erros.py` (28 linhas): `registrar_tratamento_de_erros(app)`, chamada pela `create_app()` | muda o contrato de erro da API: formato do corpo, código de cada erro |
+| Montar o app e a sessão por requisição | continua na `create_app()`, em `flask_app.py` | muda a infraestrutura: banco, ciclo de vida da sessão |
+| Declarar as rotas de todos os agregados | continua na `create_app()`, em `flask_app.py` | muda qualquer caso de uso de qualquer agregado |
+
+O `flask_app.py` caiu de 141 para 98 linhas. A `create_app()` ficou assim (as partes omitidas
+estão marcadas com `# (...)`):
+
+```python
+def create_app(session_factory):
+    orm.start_mappers()
+    app = Flask(__name__)
+
+    @app.before_request
+    def abrir_sessao():
+        g.session = session_factory()
+
+    # (...) fechar_sessao()
+
+    registrar_tratamento_de_erros(app)
+
+    @app.post("/tickets")
+    def emitir_ticket():
+        dados = ler_json(CAMPOS_TICKET)
+        # (...) chama services.emitir_ticket e devolve 201
+
+    # (...) rotas de Venda e de Pedido
+
+    return app
+```
+
+As rotas de Venda e de Pedido são de outros integrantes, então nelas mudou só o nome da função
+chamada (`_ler_texto` virou `ler_texto`, e assim por diante): 5 linhas do Igor e 6 do Guilherme.
+
+**Como os testes garantiram o comportamento.** A suíte rodou antes e depois da refatoração, e
+nenhum teste existente foi alterado. O único arquivo novo ou modificado em `tests/` é
+`tests/unit/test_entrada.py`.
+
+```text
+$ pytest tests    # antes da refatoração
+184 passed
+$ pytest tests    # depois da refatoração
+225 passed
+```
+
+Os 225 são os mesmos 184, sem nenhuma mudança, mais 41 testes novos. Entre os 184 estão os 50
+testes e2e, que passam pelas rotas e conferem os códigos HTTP e a chave `erro` das respostas:
+são eles que mostram que a API continua respondendo igual. Os 41 testes novos cobrem casos
+válidos e inválidos de cada função de `entrada.py`, incluindo a mensagem de erro, sem subir o
+app. `ler_texto`, `ler_booleano` e `ler_decimal` recebem só um dicionário, e `ler_json`, que lê
+o `request` do Flask, roda no contexto de requisição de um `Flask` vazio, sem `create_app()`,
+mapeamento nem banco. Antes, importar esses helpers carregava o `flask_app.py` e, com ele, o
+SQLAlchemy.
+
+**Custo.** Dois módulos e um arquivo de teste a mais, e mais imports. Os três módulos somam 175
+linhas, contra as 141 do arquivo único, e quem lê a `create_app()` agora precisa abrir outro
+arquivo para ver um tratador de erro ou uma regra de entrada. As 11 linhas renomeadas nas rotas
+de Venda e de Pedido também passam a aparecer no `git blame` como do Lucas.
+
+**Por que compensa.** Cada mudança de validação ou de formato de erro passa a tocar um arquivo
+que não contém as rotas dos outros agregados. Voltando aos efeitos descritos no "Antes":
+
+- **Validação de dinheiro:** mudar a regra edita só o `entrada.py`, sem gerar diff no arquivo
+  das rotas.
+- **Formato de erro:** mudar o corpo ou um código edita só o `erros.py`, e não a função que
+  declara as rotas. As 25 linhas de asserção dos testes e2e continuam dependendo da chave
+  `erro` e teriam de mudar junto com ela.
+- **Risco de conflito:** uma mudança de validação ou de erro não cai mais no arquivo em que os
+  outros integrantes mexem nas suas rotas.
+
+**O que não foi resolvido.** A `create_app()` continua montando o app e declarando as rotas dos
+três agregados, então a mudança de uma rota ainda cai no mesmo arquivo das rotas dos outros, e
+o risco de conflito continua nesse caso. As rotas ficaram onde estavam porque as de Venda e de
+Pedido são de outros integrantes. O `ler_decimal` também continua compartilhado entre
+`POST /tickets` e `POST /anuncios`: mudar a regra muda os dois endpoints, e o que mudou foi só
+o arquivo editado.
+
 ## Caio — DIP
 
 ### Antes

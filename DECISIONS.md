@@ -453,10 +453,20 @@ por requisição, traduzir exceções em códigos HTTP, validar e converter a en
 evidência do problema, usei o histórico do arquivo: f85f2d4 (Lucas), e17c50a e 19cc75c
 (Igor) e 835565f (Guilherme) mexeram no mesmo arquivo por motivos diferentes, e o
 _ler_decimal e os tratadores de erro são compartilhados pelas rotas de mais de um agregado.
-Esta etapa é só de documentação: não alterei código, e a refatoração e a parte "Depois"
-ficam para o próximo commit.
+Essa primeira etapa foi só de documentação, sem alterar código.
 
-**Arquivos:** docs/solid.md, DECISIONS.md
+Na segunda etapa, fiz a refatoração. Extraí a leitura e a validação do JSON para
+entrypoints/entrada.py (ler_json, ler_texto, ler_booleano e ler_decimal) e a tradução de
+exceções em respostas HTTP para entrypoints/erros.py (registrar_tratamento_de_erros(app)),
+com os mesmos códigos e o mesmo corpo {"erro": ...}. A create_app() continua montando o app e
+a sessão por requisição e chama essa função, e as rotas continuam no flask_app.py, que caiu de
+141 para 98 linhas. Nas rotas de Venda e de Pedido, só troquei o nome das funções de leitura
+chamadas. Escrevi 41 testes unitários em tests/unit/test_entrada.py e preenchi o "Depois" da
+minha seção no docs/solid.md.
+
+**Arquivos:** docs/solid.md, DECISIONS.md, src/rocketicket/entrypoints/flask_app.py,
+src/rocketicket/entrypoints/entrada.py, src/rocketicket/entrypoints/erros.py,
+tests/unit/test_entrada.py
 
 **Commits:** f85f2d4 (29/09, anterior a 06/10), que é o código "antes" usado no
 docs/solid.md. O hash deste commit de documentação entra aqui no commit da refatoração,
@@ -474,8 +484,20 @@ porque um commit não consegue registrar o próprio hash.
   possa conferir. Como o histórico não mostra conflito de merge no arquivo, escrevi "risco
   de conflito", e não que um conflito aconteceu.
 - Registrei o "antes" num commit só de documentação, sem mexer no código, com a suíte em
-  180 testes verdes. Esse número é a referência para mostrar, no "Depois", que a
-  refatoração não mudou o comportamento.
+  180 testes verdes. Depois disso, as refatorações do Igor e do Guilherme somaram 4 testes,
+  então a referência do "Depois" é 184. Esses 184 passaram sem nenhuma alteração, e a suíte
+  foi para 225 com os 41 testes novos: é essa a evidência de que o comportamento não mudou.
+- Movi a validação e os tratadores de erro sem mudar nenhuma regra. Mudar uma regra junto com
+  a refatoração tiraria da suíte o papel de evidência.
+- Não reorganizei as rotas nem criei blueprints. As de Venda e de Pedido são de outros
+  integrantes, e nelas mudei só o nome das funções chamadas (5 linhas do Igor e 6 do
+  Guilherme). O custo é que a create_app() continua declarando as rotas dos três agregados,
+  o que registrei no docs/solid.md como o que a refatoração não resolve.
+- registrar_tratamento_de_erros(app) recebe o app para os tratadores continuarem valendo
+  para todas as rotas, inclusive as que os testes e2e registram direto no app.
+- Os testes de entrada.py não sobem o app. Só o ler_json precisa do request do Flask, e roda
+  no contexto de requisição de um Flask vazio. Com a validação fora do flask_app.py, esses
+  testes não carregam mais o SQLAlchemy.
 
 **Uso de IA:** usei o Claude, como assistente nesta etapa
 do checkpoint. Ele leu o repositório (código, testes, documentação e histórico de commits),
