@@ -193,6 +193,26 @@ camada HTTP importa o módulo de adapters e escolhe diretamente SQLAlchemy. Assi
 persistência ou testar a rota com um repositório fake exige alterar ou contornar o código da
 rota; a dependência concreta também impede configurar essa escolha na composição da aplicação.
 
+**Problema concreto.** Em `f85f2d4`, a fábrica da aplicação recebe apenas
+`create_app(session_factory)`. Mesmo passando uma sessão falsa, cada requisição a
+`POST /tickets` continua construindo `SqlAlchemyTicketRepository` dentro do endpoint.
+Esse adaptador chama `session.get(model.Ticket, id)` e `session.add(ticket)`, portanto
+o teste da rota fica vinculado à interface da sessão SQLAlchemy. Para usar um
+`FakeTicketRepository` que implemente apenas o contrato `add()`/`get()`, seria preciso
+alterar a rota ou substituir a classe importada com um patch no teste. A abstração já
+aceita pelo service não pode ser escolhida por quem monta a aplicação.
+
+Essa evidência pode ser conferida sem depender da versão atual da branch:
+
+```sh
+git show f85f2d4:src/rocketicket/entrypoints/flask_app.py
+git show f85f2d4:src/rocketicket/service_layer/services.py
+git show c13cc33:src/rocketicket/adapters/repository.py
+```
+
+A instanciação concreta deve ficar na composição da aplicação; o ponto identificado
+para o C2 é permitir que a rota receba o repositório por injeção de dependência.
+
 O histórico confirma que a implementação concreta foi introduzida antes da rota: `c13cc33`
 (Caio, 28/09/2026) adicionou `SqlAlchemyTicketRepository`, e `f85f2d4` o instanciou dentro
 do endpoint `POST /tickets` no dia seguinte. A abstração usada pelo service está em
