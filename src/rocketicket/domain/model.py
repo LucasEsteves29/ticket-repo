@@ -158,25 +158,37 @@ class StatusVenda(Enum):
     ATIVA = "ativa"
     CONCLUIDA = "concluida"
     CANCELADA = "cancelada"
-
-
 class PrecoAcimaDoLimite(ErroDeDominio):
     """Tentativa de criar anúncio ou alterar preço acima de 110% do valor original."""
-
-
 class VendaEncerrada(ErroDeDominio):
     """Tentativa de alterar, cancelar ou concluir uma venda já cancelada ou concluída."""
-
-
+class PoliticaTetoPercentual:
+    """Responsável pelo cálculo e validação do teto de preço de revenda.
+    Separa a regra financeira anti-cambismo (fator percentual e truncamento em
+    centavos com ROUND_DOWN) do ciclo de vida da entidade Venda.
+    """
+    FATOR_PADRAO = Decimal("1.10")
+    CENTAVO = Decimal("0.01")
+    def __init__(self, fator_limite: Decimal = FATOR_PADRAO):
+        self.fator_limite = fator_limite
+    def calcular_limite(self, valor_original: Decimal) -> Decimal:
+        """Calcula o preço máximo permitido, truncado para baixo em centavos."""
+        return (valor_original * self.fator_limite).quantize(self.CENTAVO, rounding=ROUND_DOWN)
+    def validar(self, preco: Decimal, valor_original: Decimal) -> None:
+        """Recusa preço acima do limite calculado para o valor original."""
+        limite_maximo = self.calcular_limite(valor_original)
+        if preco > limite_maximo:
+            percentual = int(self.fator_limite * 100)
+            raise PrecoAcimaDoLimite(
+                f"Preço {preco} excede o limite máximo permitido de {percentual}% ({limite_maximo})"
+            )
 class Venda:
     """Raiz do agregado Venda: o anúncio de revenda de um ticket.
-
     Nasce ATIVA e termina em CANCELADA (o vendedor desistiu) ou CONCLUIDA (o
     ticket foi vendido). Os dois estados finais não voltam a ATIVA nem aceitam
-    novo preço. O preço nunca passa de 110% do valor original do ticket, nem na
-    criação nem em alterar_preco().
+    novo preço. A validação do teto de revenda é delegada a PoliticaTetoPercentual.
     """
-
+    politica_preco: PoliticaTetoPercentual = PoliticaTetoPercentual()
     def __init__(
         self,
         id: str,
@@ -184,60 +196,45 @@ class Venda:
         vendedor_id: str,
         preco: Decimal,
         valor_original: Decimal,
+        politica_preco: PoliticaTetoPercentual | None = None,
     ):
         self.id = id
         self.ticket_id = ticket_id
         self.vendedor_id = vendedor_id
         self.valor_original = valor_original
+        if politica_preco is not None:
+            self.politica_preco = politica_preco
         self._validar_preco(preco)
         self.preco = preco
         self.status = StatusVenda.ATIVA
-
     def _validar_preco(self, preco: Decimal) -> None:
-        """Recusa preço acima de 110% do valor original.
-
-        O teto é arredondado para baixo em centavos, para nunca passar dos 110%:
-        valor original 99,99 dá teto de 109,98 (e não 109,99).
-        """
-        limite_maximo = (self.valor_original * Decimal("1.10")).quantize(
-            Decimal("0.01"), rounding=ROUND_DOWN
-        )
-        if preco > limite_maximo:
-            raise PrecoAcimaDoLimite(
-                f"Preço {preco} excede o limite máximo permitido de 110% ({limite_maximo})"
-            )
-
+        """Delega a verificação do teto para a política de preço da venda."""
+        self.politica_preco.validar(preco, self.valor_original)
     def alterar_preco(self, novo_preco: Decimal) -> None:
-        """Troca o preço do anúncio, respeitando o mesmo limite de 110% da criação."""
+        """Troca o preço do anúncio, respeitando a política de limite da venda."""
         self._exigir_ativa("ter o preço alterado")
         self._validar_preco(novo_preco)
         self.preco = novo_preco
-
     def cancelar(self) -> None:
         """Encerra o anúncio sem venda. CANCELADA é estado final."""
         self._exigir_ativa("ser cancelada")
         self.status = StatusVenda.CANCELADA
-
     def concluir(self) -> None:
         """Encerra o anúncio com a venda feita. CONCLUIDA é estado final."""
         self._exigir_ativa("ser concluída")
         self.status = StatusVenda.CONCLUIDA
-
     def _exigir_ativa(self, acao: str) -> None:
         """Venda cancelada ou concluída não volta a ATIVA nem muda de preço."""
         if self.status is not StatusVenda.ATIVA:
             raise VendaEncerrada(
                 f"venda {self.id} está {self.status.value} e não pode {acao}"
             )
-
     def __repr__(self) -> str:
         return f"<Venda {self.id} {self.status.value}>"
-
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Venda):
             return False
         return self.id == other.id
-
     def __hash__(self) -> int:
         return hash(self.id)
 

@@ -69,3 +69,22 @@ class TestCriarAnuncio:
             )
         assert fake_session.committed is False
         assert repo_vendas.get("v1") is None
+
+    def test_criar_anuncio_aceita_politica_de_preco_atualizada(self, fake_session):
+        ticket = novo_ticket()
+        repo_tickets = FakeTicketRepository([ticket])
+        repo_vendas = FakeVendaRepository()
+        politica_sem_agio = model.PoliticaTetoPercentual(fator_limite=Decimal("1.00"))
+        with pytest.raises(model.PrecoAcimaDoLimite):
+            services.criar_anuncio(
+                "v1",
+                "t1",
+                "u1",
+                Decimal("105.00"),
+                repo_vendas,
+                repo_tickets,
+                fake_session,
+                politica_preco=politica_sem_agio,
+            )
+        assert fake_session.committed is False
+        assert repo_vendas.get("v1") is None

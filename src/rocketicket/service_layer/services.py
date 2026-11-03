@@ -53,6 +53,7 @@ def criar_anuncio(
     repo_vendas: AbstractRepository[model.Venda],
     repo_tickets: AbstractRepository[model.Ticket],
     session,
+    politica_preco: model.PoliticaTetoPercentual | None = None,
 ) -> str:
     ticket = repo_tickets.get(ticket_id)
     if ticket is None:
@@ -66,6 +67,7 @@ def criar_anuncio(
         vendedor_id=vendedor_id,
         preco=preco,
         valor_original=ticket.valor_original,
+        politica_preco=politica_preco,
     )
     repo_vendas.add(venda)
     session.commit()
