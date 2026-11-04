@@ -56,18 +56,27 @@ class SqlAlchemyTicketRepository(AbstractRepository[model.Ticket]):
 # Venda — Miguel
 
 
-class AbstractVendaRepository(AbstractRepository[model.Venda]):
-    """
-    Repositório de Venda: além de add() e get(), acha o anúncio ativo de um ticket.
+class ConsultaVendaAtiva(abc.ABC):
+    """Porta só de leitura: acha o anúncio ativo de um ticket.
 
-    É por aqui que criar_anuncio descobre se o ticket já tem uma venda ATIVA
-    antes de abrir outro.
+    É o que outro agregado precisa da Venda. O criar_pedido depende só disto, e
+    não do repositório completo, para não receber add() e get() que não usa
+    (ISP). Uma fonte só de leitura, como um cache ou uma réplica, pode
+    implementar esta interface sem precisar fingir que grava vendas.
     """
 
     @abc.abstractmethod
     def get_ativa_por_ticket(self, ticket_id: str) -> model.Venda | None:
         """Devolve a venda ATIVA desse ticket, ou None se ele não estiver anunciado."""
         raise NotImplementedError
+
+
+class AbstractVendaRepository(AbstractRepository[model.Venda], ConsultaVendaAtiva):
+    """Repositório completo da Venda: add() e get() mais a consulta da venda ativa.
+
+    É o que os casos de uso da própria Venda recebem. Quem só precisa ler a venda
+    ativa depende de ConsultaVendaAtiva.
+    """
 
 
 class SqlAlchemyVendaRepository(AbstractVendaRepository):

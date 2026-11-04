@@ -582,14 +582,68 @@ O cliente real apareceu só no dia seguinte, em outro agregado.
 
 ### Depois
 
-<!--
-Responsável: Miguel
-O enunciado exige:
-- o hash do commit da refatoração (do próprio autor);
-- o que mudou;
-- como os testes garantiram que o comportamento não mudou;
-- o custo da mudança e por que compensa.
--->
+**Commit "depois":** `da058ef` (Miguel, 03/11/2026), `refactor(venda): implementa segregação da consulta de venda ativa aplicando ISP`. A seção "Antes" está em `adf2561` (02/11/2026).
+
+**O que mudou.** A consulta saiu do repositório completo e virou uma interface própria, só de
+leitura. O repositório da Venda continua tendo os três métodos, porque agora herda das duas
+abstrações, e o `criar_pedido` passa a pedir só o que usa:
+
+```python
+# adapters/repository.py
+class ConsultaVendaAtiva(abc.ABC):
+    @abc.abstractmethod
+    def get_ativa_por_ticket(self, ticket_id: str) -> model.Venda | None: ...
+
+
+class AbstractVendaRepository(AbstractRepository[model.Venda], ConsultaVendaAtiva):
+    """Repositório completo da Venda: add() e get() mais a consulta da venda ativa."""
+
+
+# service_layer/services.py
+def criar_pedido(
+    id, ticket_id, comprador_id,
+    repo_pedidos: AbstractRepository[model.Pedido],
+    repo_vendas: ConsultaVendaAtiva,      # antes: AbstractVendaRepository
+    session,
+) -> str:
+```
+
+| Cliente | Depende de | Métodos que recebe | Métodos que usa |
+|---|---|---|---|
+| `criar_pedido` (antes) | `AbstractVendaRepository` | `add`, `get`, `get_ativa_por_ticket` | `get_ativa_por_ticket` |
+| `criar_pedido` (depois) | `ConsultaVendaAtiva` | `get_ativa_por_ticket` | `get_ativa_por_ticket` |
+
+O `SqlAlchemyVendaRepository` e o `FakeVendaRepository` não mudaram uma linha: como
+`AbstractVendaRepository` herda de `ConsultaVendaAtiva`, os dois continuam servindo para o
+`criar_pedido`. A rota `POST /pedidos` também não mudou.
+
+A mudança de requisito do "Antes" deixa de forçar a violação do LSP: uma fonte só de leitura
+herda de `ConsultaVendaAtiva`, implementa só `get_ativa_por_ticket()` e já pode ser passada
+para o `criar_pedido`, sem nenhum `add()` que lance erro.
+
+**Como os testes garantiram que o comportamento não mudou.**
+
+- Os cinco testes de `criar_pedido` em `tests/unit/test_services_pedido.py` e os testes e2e
+  de `POST /pedidos` em `tests/e2e/test_pedido_api.py` não foram alterados e continuam
+  passando: o comportamento visto pelo Pedido e pela API é o mesmo.
+- Os testes de integração em `tests/integration/test_venda_repository.py` (`ed46d50`) também
+  não mudaram e passam, o que mostra que o repositório real manteve o contrato.
+- O arquivo novo `tests/unit/test_consulta_venda_ativa.py` tem 6 testes. Três passam ao
+  `criar_pedido` uma `ConsultaSoLeitura`, que só implementa a consulta e não tem `add()` nem
+  `get()`: o pedido é criado com o preço do anúncio, o ticket sem anúncio continua lançando
+  `RecursoNaoEncontrado` e a consulta não expõe escrita. Os outros três fixam o contrato: o
+  repositório completo também é uma `ConsultaVendaAtiva`, e o `abc` continua recusando
+  qualquer implementação que esqueça a consulta.
+- A suíte unitária foi de 95 para 101 testes, todos passando.
+
+**Custo e por que compensa.** O custo é uma classe a mais e herança múltipla na
+`AbstractVendaRepository`, que agora tem duas bases. Quem lê o código precisa entender que
+o repositório da Venda "é" também uma consulta. Em troca, o tipo do `criar_pedido` passa a
+dizer exatamente o que o Pedido precisa da Venda: ler o anúncio ativo, e nada além. A
+fronteira entre os agregados fica visível na assinatura, sem depender de disciplina na
+revisão, e a próxima fonte de leitura (cache, réplica ou uma view de CQRS) entra sem tocar no
+repositório nem no service. A mudança não alterou nenhuma implementação existente, só tipos
+e uma classe abstrata, por isso o custo de risco foi baixo.
 
 ## Guilherme — OCP
 

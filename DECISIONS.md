@@ -561,3 +561,39 @@ Na primeira, ele levantou o histórico de git de model.py e services.py e redigi
 compatibilidade com o mapeamento do SQLAlchemy, sugeriu os testes unitários e redigiu o rascunho
  do “Depois”. Eu revisei o código e o texto, executei a suíte com pytest e conferi hashes, linhas 
  e afirmações. A responsabilidade pelo conteúdo é minha.
+
+
+### Miguel Duque (@miguelduq)
+
+**O que fiz:** na primeira etapa, preenchi o "Antes" da minha seção no docs/solid.md,
+sobre uma violação do Princípio da Segregação de Interfaces (ISP) no repositório da Venda.
+A AbstractVendaRepository, que criei em 73b9847 e implementei em 54e16d6 (28/09), junta
+add(), get() e get_ativa_por_ticket(), e o criar_pedido (ec01929, 29/09) recebe essa
+interface inteira para usar só a consulta da venda ativa. Mostrei três efeitos: o service do
+Pedido ganha acesso de escrita à Venda, uma fonte só de leitura (cache ou réplica) teria de
+implementar um add() que lança erro, violando também o LSP, e os testes do Pedido não
+conseguem usar um dublê mínimo. Na segunda etapa, fiz a refatoração: criei a interface
+ConsultaVendaAtiva, só com get_ativa_por_ticket(), fiz a AbstractVendaRepository herdar dela
+e troquei o tipo do repo_vendas no criar_pedido. Escrevi tests/unit/test_consulta_venda_ativa.py,
+com 6 testes, e preenchi o "Depois" no docs/solid.md.
+
+**Arquivos:** docs/solid.md, src/rocketicket/adapters/repository.py,
+src/rocketicket/service_layer/services.py, tests/unit/test_consulta_venda_ativa.py,
+DECISIONS.md
+
+**Commits:** 73b9847 e 54e16d6 (28/09, anteriores a 06/10, código "antes"), adf2561
+(02/11, seção "Antes"), da058ef (03/11, refatoração e testes) e o commit deste registro
+(03/11, seção "Depois" e DECISIONS.md).
+
+**Decisão:** em vez de criar um repositório separado para o Pedido, fiz a
+AbstractVendaRepository herdar da nova ConsultaVendaAtiva. Assim o SqlAlchemyVendaRepository
+e o FakeVendaRepository continuaram iguais, nenhum teste existente precisou mudar e a
+refatoração ficou restrita a uma classe abstrata nova e a uma anotação de tipo.
+
+**Uso de IA:** usei o Claude (Anthropic) como assistente nas duas etapas deste
+checkpoint. Ele analisou o histórico do repositório, identificou a violação de ISP no
+repositório da Venda, redigiu as seções "Antes" e "Depois" do docs/solid.md, escrevemos juntos a
+interface ConsultaVendaAtiva, a mudança no criar_pedido e os testes de
+test_consulta_venda_ativa.py, e me ajudou a resolver conflito do docs/solid.md no merge com a main.
+Eu rodei a suíte de testes na minha máquina, revisei o código e o texto e fiz os commits.
+A responsabilidade pelo conteúdo é minha.
