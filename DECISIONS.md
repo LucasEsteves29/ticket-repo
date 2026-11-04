@@ -592,8 +592,8 @@ refatoração ficou restrita a uma classe abstrata nova e a uma anotação de ti
 
 **Uso de IA:** usei o Claude (Anthropic) como assistente nas duas etapas deste
 checkpoint. Ele analisou o histórico do repositório, identificou a violação de ISP no
-repositório da Venda, redigiu as seções "Antes" e "Depois" do docs/solid.md, escreveu a
+repositório da Venda, redigiu as seções "Antes" e "Depois" do docs/solid.md, escrevemos juntos a
 interface ConsultaVendaAtiva, a mudança no criar_pedido e os testes de
-test_consulta_venda_ativa.py, e resolveu o conflito do docs/solid.md no merge com a main.
+test_consulta_venda_ativa.py, e me ajudou a resolver conflito do docs/solid.md no merge com a main.
 Eu rodei a suíte de testes na minha máquina, revisei o código e o texto e fiz os commits.
 A responsabilidade pelo conteúdo é minha.
