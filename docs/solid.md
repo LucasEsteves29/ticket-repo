@@ -147,6 +147,92 @@ O enunciado exige:
 - o custo da mudança e por que compensa.
 -->
 
+**Commit "depois":** `[hash]` (Lucas Esteves, 03/11/2026).
+
+**O que mudou.** Das quatro responsabilidades listadas no "Antes", duas saíram do
+`flask_app.py` para módulos próprios em `entrypoints/`. O código foi movido sem mudar nenhuma
+regra: os tratadores têm os mesmos códigos e o mesmo corpo `{"erro": ...}`, e os helpers de
+leitura só perderam o `_` do nome, porque agora são usados fora do módulo.
+
+| Responsabilidade | Onde fica agora | Muda quando |
+|---|---|---|
+| Validar e converter a entrada JSON | `entrada.py` (49 linhas): `ler_json`, `ler_texto`, `ler_booleano` e `ler_decimal` | muda a regra de entrada, como o formato aceito para dinheiro |
+| Traduzir exceções em códigos HTTP | `erros.py` (28 linhas): `registrar_tratamento_de_erros(app)`, chamada pela `create_app()` | muda o contrato de erro da API: formato do corpo, código de cada erro |
+| Montar o app e a sessão por requisição | continua na `create_app()`, em `flask_app.py` | muda a infraestrutura: banco, ciclo de vida da sessão |
+| Declarar as rotas de todos os agregados | continua na `create_app()`, em `flask_app.py` | muda qualquer caso de uso de qualquer agregado |
+
+O `flask_app.py` caiu de 141 para 98 linhas. A `create_app()` ficou assim (as partes omitidas
+estão marcadas com `# (...)`):
+
+```python
+def create_app(session_factory):
+    orm.start_mappers()
+    app = Flask(__name__)
+
+    @app.before_request
+    def abrir_sessao():
+        g.session = session_factory()
+
+    # (...) fechar_sessao()
+
+    registrar_tratamento_de_erros(app)
+
+    @app.post("/tickets")
+    def emitir_ticket():
+        dados = ler_json(CAMPOS_TICKET)
+        # (...) chama services.emitir_ticket e devolve 201
+
+    # (...) rotas de Venda e de Pedido
+
+    return app
+```
+
+As rotas de Venda e de Pedido são de outros integrantes, então nelas mudou só o nome da função
+chamada (`_ler_texto` virou `ler_texto`, e assim por diante): 5 linhas do Igor e 6 do Guilherme.
+
+**Como os testes garantiram o comportamento.** A suíte rodou antes e depois da refatoração, e
+nenhum teste existente foi alterado. O único arquivo novo ou modificado em `tests/` é
+`tests/unit/test_entrada.py`.
+
+```text
+$ pytest tests    # antes da refatoração
+184 passed
+$ pytest tests    # depois da refatoração
+225 passed
+```
+
+Os 225 são os mesmos 184, sem nenhuma mudança, mais 41 testes novos. Entre os 184 estão os 50
+testes e2e, que passam pelas rotas e conferem os códigos HTTP e a chave `erro` das respostas:
+são eles que mostram que a API continua respondendo igual. Os 41 testes novos cobrem casos
+válidos e inválidos de cada função de `entrada.py`, incluindo a mensagem de erro, sem subir o
+app. `ler_texto`, `ler_booleano` e `ler_decimal` recebem só um dicionário, e `ler_json`, que lê
+o `request` do Flask, roda no contexto de requisição de um `Flask` vazio, sem `create_app()`,
+mapeamento nem banco. Antes, importar esses helpers carregava o `flask_app.py` e, com ele, o
+SQLAlchemy.
+
+**Custo.** Dois módulos e um arquivo de teste a mais, e mais imports. Os três módulos somam 175
+linhas, contra as 141 do arquivo único, e quem lê a `create_app()` agora precisa abrir outro
+arquivo para ver um tratador de erro ou uma regra de entrada. As 11 linhas renomeadas nas rotas
+de Venda e de Pedido também passam a aparecer no `git blame` como do Lucas.
+
+**Por que compensa.** Cada mudança de validação ou de formato de erro passa a tocar um arquivo
+que não contém as rotas dos outros agregados. Voltando aos efeitos descritos no "Antes":
+
+- **Validação de dinheiro:** mudar a regra edita só o `entrada.py`, sem gerar diff no arquivo
+  das rotas.
+- **Formato de erro:** mudar o corpo ou um código edita só o `erros.py`, e não a função que
+  declara as rotas. As 25 linhas de asserção dos testes e2e continuam dependendo da chave
+  `erro` e teriam de mudar junto com ela.
+- **Risco de conflito:** uma mudança de validação ou de erro não cai mais no arquivo em que os
+  outros integrantes mexem nas suas rotas.
+
+**O que não foi resolvido.** A `create_app()` continua montando o app e declarando as rotas dos
+três agregados, então a mudança de uma rota ainda cai no mesmo arquivo das rotas dos outros, e
+o risco de conflito continua nesse caso. As rotas ficaram onde estavam porque as de Venda e de
+Pedido são de outros integrantes. O `ler_decimal` também continua compartilhado entre
+`POST /tickets` e `POST /anuncios`: mudar a regra muda os dois endpoints, e o que mudou foi só
+o arquivo editado.
+
 ## Caio — DIP
 
 ### Antes
@@ -160,6 +246,64 @@ O enunciado exige:
 - o problema concreto que a violação causa.
 -->
 
+**Princípio violado:** DIP, o Princípio da Inversão de Dependência. O código de alto nível
+(a rota HTTP, que coordena a emissão do ticket) não deve depender diretamente do detalhe
+de persistência SQLAlchemy; ambos devem depender de uma abstração.
+
+**Commit "antes":** `f85f2d4` (Lucas Esteves, 29/09/2026), `FEAT: adiciona base do app Flask
+e endpoint POST /tickets com testes e2e`. Esse commit é anterior a 06/10/2026. O service
+`emitir_ticket` já recebe um `AbstractRepository[Ticket]`, mas a rota instancia o adaptador
+concreto no próprio endpoint:
+
+```python
+# src/rocketicket/entrypoints/flask_app.py (f85f2d4)
+from rocketicket.adapters import orm, repository
+
+@app.post("/tickets")
+def emitir_ticket():
+    dados = _ler_json(CAMPOS_TICKET)
+    ticket_id = services.emitir_ticket(
+        _ler_texto(dados, "id"),
+        _ler_texto(dados, "evento_id"),
+        _ler_decimal(dados, "valor_original"),
+        _ler_texto(dados, "dono_id"),
+        repository.SqlAlchemyTicketRepository(g.session),  # detalhe concreto na rota
+        g.session,
+    )
+    return {"id": ticket_id}, 201
+```
+
+O ponto de acoplamento é a construção de `SqlAlchemyTicketRepository(g.session)` na rota.
+Embora `services.emitir_ticket` trabalhe com a abstração `AbstractRepository[Ticket]`, a
+camada HTTP importa o módulo de adapters e escolhe diretamente SQLAlchemy. Assim, trocar a
+persistência ou testar a rota com um repositório fake exige alterar ou contornar o código da
+rota; a dependência concreta também impede configurar essa escolha na composição da aplicação.
+
+**Problema concreto.** Em `f85f2d4`, a fábrica da aplicação recebe apenas
+`create_app(session_factory)`. Mesmo passando uma sessão falsa, cada requisição a
+`POST /tickets` continua construindo `SqlAlchemyTicketRepository` dentro do endpoint.
+Esse adaptador chama `session.get(model.Ticket, id)` e `session.add(ticket)`, portanto
+o teste da rota fica vinculado à interface da sessão SQLAlchemy. Para usar um
+`FakeTicketRepository` que implemente apenas o contrato `add()`/`get()`, seria preciso
+alterar a rota ou substituir a classe importada com um patch no teste. A abstração já
+aceita pelo service não pode ser escolhida por quem monta a aplicação.
+
+Essa evidência pode ser conferida sem depender da versão atual da branch:
+
+```sh
+git show f85f2d4:src/rocketicket/entrypoints/flask_app.py
+git show f85f2d4:src/rocketicket/service_layer/services.py
+git show c13cc33:src/rocketicket/adapters/repository.py
+```
+
+A instanciação concreta deve ficar na composição da aplicação; o ponto identificado
+para o C2 é permitir que a rota receba o repositório por injeção de dependência.
+
+O histórico confirma que a implementação concreta foi introduzida antes da rota: `c13cc33`
+(Caio, 28/09/2026) adicionou `SqlAlchemyTicketRepository`, e `f85f2d4` o instanciou dentro
+do endpoint `POST /tickets` no dia seguinte. A abstração usada pelo service está em
+`60679da` (`AbstractRepository`), também anterior a 06/10/2026.
+
 ### Depois
 
 <!--
@@ -171,18 +315,105 @@ O enunciado exige:
 - o custo da mudança e por que compensa.
 -->
 
-## Igor — a definir
+## Igor — SRP (domain/model.py e service_layer/services.py)
 
 ### Antes
 
-<!--
-Responsável: Igor
-O enunciado exige:
-- o princípio violado;
-- o trecho do código;
-- o hash do commit anterior a 06/10;
-- o problema concreto que a violação causa.
--->
+**Princípio violado:** SRP, o Princípio da Responsabilidade Única. Uma classe deve ter um único motivo para mudar.
+
+**Commit "antes":** `331685a` (Igor Leal, 24/09/2026), `fix(venda): arredonda teto de 110% para baixo com quantize na criacao`. O código abaixo é o do bloco da `Venda` nesse commit (`git show 331685a:src/rocketicket/domain/model.py`, linhas 170 a 224).
+
+### A violação
+
+No commit `331685a`, a classe `Venda` ocupa as linhas 170 a 234 de `model.py`. Ela acumula duas responsabilidades, cada uma com um motivo de mudança diferente:
+
+| Responsabilidade | Onde fica em `331685a` | Muda quando |
+|---|---|---|
+| Controlar o ciclo de vida e a identidade do anúncio | `__init__()` (atributos e status inicial `StatusVenda.ATIVA`), `alterar_preco()`, `cancelar()`, `concluir()` e `_exigir_ativa()` (linhas 173 a 187 e 198 a 224) | Muda o ciclo de vida do anúncio: estados possíveis, regras de cancelamento ou conclusão |
+| Calcular e validar a política financeira do teto de revenda | `_validar_preco()` com o fator fixo `Decimal("1.10")` e o truncamento `quantize(Decimal("0.01"), rounding=ROUND_DOWN)` (linhas 189 a 196), além do cálculo repetido em `alterar_preco()` (linhas 201 a 205) | Muda a regra anti-cambismo: percentual máximo permitido, critério de arredondamento em centavos ou limite por tipo de ingresso |
+
+Trecho de `331685a` (as partes omitidas estão marcadas com `# (...)`):
+
+```python
+class Venda:
+    """Raiz do agregado Venda."""
+
+    def __init__(
+        self,
+        id: str,
+        ticket_id: str,
+        vendedor_id: str,
+        preco: Decimal,
+        valor_original: Decimal,
+    ):
+        self.id = id
+        self.ticket_id = ticket_id
+        self.vendedor_id = vendedor_id
+        self.valor_original = valor_original
+        self._validar_preco(preco)
+        self.preco = preco
+        self.status = StatusVenda.ATIVA
+
+    def _validar_preco(self, preco: Decimal) -> None:
+        limite_maximo = (self.valor_original * Decimal("1.10")).quantize(
+            Decimal("0.01"), rounding=ROUND_DOWN
+        )
+        if preco > limite_maximo:
+            raise PrecoAcimaDoLimite(
+                f"Preço {preco} excede o limite máximo permitido de 110% ({limite_maximo})"
+            )
+
+    def alterar_preco(self, novo_preco: Decimal) -> None:
+        """Troca o preço do anúncio, respeitando o mesmo limite de 110% da criação."""
+        self._exigir_ativa("ter o preço alterado")
+        limite_maximo = self.valor_original * Decimal("1.10")
+        if novo_preco > limite_maximo:
+            raise PrecoAcimaDoLimite(
+                f"Preço {novo_preco} excede o limite máximo permitido de 110% ({limite_maximo})"
+            )
+        self.preco = novo_preco
+
+    # (...) cancelar(), concluir() e _exigir_ativa()
+```
+
+### Problema concreto
+
+O histórico de `model.py` mostra três integrantes editando a classe `Venda` porque o ciclo de vida do anúncio e a fórmula financeira do teto de 110% moram na mesma classe:
+
+```text
+$ git log --format='%h %an %ad %s' --date=short -- src/rocketicket/domain/model.py
+be76d28 Miguel Bocanera 2026-09-29 fix(repository): correct typos in Venda repository and model documentation
+186b52c Lucas Esteves 2026-09-26 FIX: alterar_preco usa o mesmo teto de 110% do __init__
+331685a igorbleal 2026-09-24 fix(venda): arredonda teto de 110% para baixo com quantize na criacao
+0a468e7 Miguel Bocanera 2026-09-22 feat(venda): alterar_preco(), cancelar() e concluir() bloqueando venda encerrada
+cdd0311 igorbleal 2026-09-21 Feat: Criando entidade Venda
+```
+
+O que cada commit mudou na classe `Venda` (`git show --numstat` e o diff de cada um):
+
+| Commit | Autor | Linhas (+/−) | O que mudou | Responsabilidade tocada |
+|---|---|---|---|---|
+| `cdd0311` | Igor | +36 / −1 | cria `StatusVenda`, `PrecoAcimaDoLimite` e `Venda.__init__` com `valor_original * Decimal("1.10")` | ciclo de vida e política de teto |
+| `0a468e7` | Miguel | +31 / −0 | cria `VendaEncerrada`, `alterar_preco()`, `cancelar()`, `concluir()` e `_exigir_ativa()`, repetindo o cálculo de 1.10 em `alterar_preco()` | ciclo de vida e política de teto |
+| `331685a` | Igor | +12 / −9 | extrai `_validar_preco()` com `quantize(..., rounding=ROUND_DOWN)` chamado no `__init__`, mas `alterar_preco()` continua com o cálculo antigo | política de teto |
+| `186b52c` | Lucas | +1 / −5 | substitui o cálculo em `alterar_preco()` por `self._validar_preco(novo_preco)` | ciclo de vida e política de teto |
+
+Os commits `331685a` e `186b52c` mostram o problema na prática: quando a regra financeira do teto mudou para truncar centavos com `ROUND_DOWN` (`331685a`), a edição aconteceu dentro de `Venda`, e `alterar_preco()` continuou aplicando `self.valor_original * Decimal("1.10")` sem `quantize` até o commit `186b52c` corrigir a divergência dois dias depois.
+
+No HEAD, o bloco da `Venda` (linhas 156 a 241) divide a autoria entre três pessoas no `git blame`:
+
+```text
+$ git blame -L 156,241 --line-porcelain fbf6358 -- src/rocketicket/domain/model.py | grep '^author ' | sort | uniq -c
+    47 author igorbleal
+    38 author Miguel Bocanera
+    1 author Lucas Esteves
+```
+
+### Os efeitos
+
+- **Mudar a regra financeira do teto obriga a editar a entidade `Venda`.** O fator `Decimal("1.10")` e a chamada a `quantize(Decimal("0.01"), rounding=ROUND_DOWN)` estão embutidos dentro de `Venda._validar_preco()` (linhas 201 a 203 no HEAD). Qualquer ajuste na política de preço — como alterar o percentual permitido, mudar a regra de arredondamento ou exigir revenda pelo preço de face (100%, sem ágio) em lotes promocionais — exige modificar a classe que controla o ciclo de vida do anúncio.
+- **Não é possível consultar nem testar o cálculo do teto sem instanciar uma `Venda`.** A fórmula que calcula o preço máximo permitido para um `valor_original` não devolve o valor calculado: ela só existe dentro de `_validar_preco()`, acoplada ao lançamento de `PrecoAcimaDoLimite`. Nos testes (`git grep -h 'PrecoAcimaDoLimite' fbf6358 -- tests/`), as 11 ocorrências precisam criar uma instância inteira de `Venda` (ou chamar `criar_anuncio`) apenas para exercitar a aritmética do limite de 110%.
+- **Acoplamento no caso de uso `criar_anuncio`.** Em `service_layer/services.py` (commit `38e541d`, linhas 48 a 72 no HEAD), `criar_anuncio` instancia `model.Venda(...)` sem poder parametrizar a política de preço, prendendo o serviço a uma única regra fixa de 110%.
 
 ### Depois
 
@@ -194,7 +425,88 @@ O enunciado exige:
 - como os testes garantiram que o comportamento não mudou;
 - o custo da mudança e por que compensa.
 -->
+**Commit "depois":** `576af01` (Igor Leal, 03/11/2026), `refactor(venda): extrai PoliticaTetoPercentual aplicando SRP no agregado Venda`.
 
+<<<<<<< HEAD
+=======
+### O que mudou
+
+Extraí o cálculo e a validação do teto de revenda de dentro da entidade `Venda` para uma classe dedicada no domínio, `PoliticaTetoPercentual` (`src/rocketicket/domain/model.py`), e permiti parametrizar a política tanto em `Venda.__init__()` quanto no caso de uso `criar_anuncio()` (`src/rocketicket/service_layer/services.py`), mantendo o teto de 110% como valor padrão:
+
+| Responsabilidade | Onde fica depois da refatoração | Muda quando |
+|---|---|---|
+| Controlar o ciclo de vida e a identidade do anúncio | `Venda` (`domain/model.py`): `__init__()`, `alterar_preco()`, `cancelar()`, `concluir()` e `_exigir_ativa()` | muda o ciclo de vida do anúncio: estados possíveis, regras de cancelamento ou conclusão |
+| Calcular e validar a política financeira do teto de revenda | `PoliticaTetoPercentual` (`domain/model.py`): `calcular_limite(valor_original)` e `validar(preco, valor_original)` | muda a regra anti-cambismo: fator percentual, arredondamento em centavos ou teto customizado por tipo de ingresso |
+
+Trecho refatorado em `src/rocketicket/domain/model.py`:
+
+```python
+class PoliticaTetoPercentual:
+    FATOR_PADRAO = Decimal("1.10")
+    CENTAVO = Decimal("0.01")
+
+    def __init__(self, fator_limite: Decimal = FATOR_PADRAO):
+        self.fator_limite = fator_limite
+
+    def calcular_limite(self, valor_original: Decimal) -> Decimal:
+        return (valor_original * self.fator_limite).quantize(
+            self.CENTAVO, rounding=ROUND_DOWN
+        )
+
+    def validar(self, preco: Decimal, valor_original: Decimal) -> None:
+        limite_maximo = self.calcular_limite(valor_original)
+        if preco > limite_maximo:
+            percentual = int(self.fator_limite * 100)
+            raise PrecoAcimaDoLimite(
+                f"Preço {preco} excede o limite máximo permitido de {percentual}% ({limite_maximo})"
+            )
+
+
+class Venda:
+    politica_preco: PoliticaTetoPercentual = PoliticaTetoPercentual()
+
+    def __init__(
+        self,
+        id: str,
+        ticket_id: str,
+        vendedor_id: str,
+        preco: Decimal,
+        valor_original: Decimal,
+        politica_preco: PoliticaTetoPercentual | None = None,
+    ):
+        self.id = id
+        self.ticket_id = ticket_id
+        self.vendedor_id = vendedor_id
+        self.valor_original = valor_original
+        if politica_preco is not None:
+            self.politica_preco = politica_preco
+        self._validar_preco(preco)
+        self.preco = preco
+        self.status = StatusVenda.ATIVA
+
+    def _validar_preco(self, preco: Decimal) -> None:
+        self.politica_preco.validar(preco, self.valor_original)
+```
+
+O que cada problema apontado no "Antes" passou a ter:
+
+- **Motivos de mudança separados:** alterar a regra financeira (fator ou arredondamento) edita apenas `PoliticaTetoPercentual`, sem tocar nos métodos de estado da `Venda`.
+- **Cálculo consultável e testável sem instanciar `Venda`:** o método `PoliticaTetoPercentual().calcular_limite(valor_original)` devolve diretamente o `Decimal` do teto truncado (ex.: 99.99 -> 109.98).
+- **Extensão no `criar_anuncio`:** o serviço aceita `politica_preco` opcional e o repassa à `Venda`, permitindo aplicar limites diferenciados (ex.: `fator_limite=Decimal("1.00")` para revenda pelo valor facial sem ágio) sem alterar `Venda`.
+
+### Como os testes garantiram que o comportamento não mudou
+
+- Todos os testes existentes da suíte da Fase 1 e da Fase 2 (`test_venda.py`, `test_services_venda.py`, `test_orm.py`, `test_venda_repository.py` e `test_venda_api.py`) continuaram passando sem alterar nenhuma chamada pré-existente, pois `politica_preco` tem `PoliticaTetoPercentual()` (110%) como padrão.
+- Declarar `politica_preco = PoliticaTetoPercentual()` como atributo de classe em `Venda` preservou o funcionamento do mapeamento imperativo do SQLAlchemy (`adapters/orm.py`): quando o ORM reconstrói uma `Venda` lida do banco sem chamar `__init__()`, o atributo de classe garante que `venda.alterar_preco()` continue encontrando `self.politica_preco`.
+- Foram adicionados 3 testes novos exercitando a refatoração: 2 em `TestPoliticaTetoPercentual` (`tests/unit/test_venda.py`), cobrindo `calcular_limite()` sem instanciar `Venda` e uma `Venda` com política sem ágio (1.00), e 1 em `TestCriarAnuncio` (`tests/unit/test_services_venda.py`), verificando a passagem de `politica_preco` pelo serviço.
+
+### Custo da mudança e por que compensa
+
+- **Custo:** uma classe a mais em `domain/model.py` (`PoliticaTetoPercentual`), um passo de delegação em `Venda._validar_preco()` e um parâmetro opcional adicional nas assinaturas de `Venda.__init__()` e `services.criar_anuncio()`.
+- **Por que compensa:** o cálculo do teto de revenda com `Decimal` e `ROUND_DOWN` é a principal invariante financeira da `Venda` (ADR 0003). Isolá-lo em `PoliticaTetoPercentual` elimina a mistura de responsabilidades que levou aos commits `331685a` e `186b52c` na Fase 1, permite testar e consultar o limite máximo diretamente sem criar anúncios falsos e abre caminho para variar a política de teto sem modificar a entidade `Venda`.
+
+
+>>>>>>> origin/main
 ## Miguel — ISP (`adapters/repository.py`)
 
 ### Antes

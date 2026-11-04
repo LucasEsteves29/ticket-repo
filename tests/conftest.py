@@ -55,7 +55,7 @@ class FakeSession:
 @pytest.fixture
 def fake_session():
     return FakeSession()
-    
+
 class FakeTicketRepository(AbstractRepository[model.Ticket]):
     """Implementação em memória do repositório de Ticket."""
 
@@ -78,7 +78,8 @@ class FakeTicketRepository(AbstractRepository[model.Ticket]):
 @pytest.fixture
 def fake_ticket_repository():
     return FakeTicketRepository()
-    
+
+
 class FakeVendaRepository(AbstractVendaRepository):
     """Implementação em memória de Venda para uso em testes unitários."""
     def __init__(self, vendas=None):
@@ -102,7 +103,7 @@ def fake_venda_repository():
 
 
 class FakePedidoRepository(AbstractRepository[model.Pedido]):
-    
+
 
     def __init__(self, pedidos=None):
         self._pedidos = set(pedidos or [])
