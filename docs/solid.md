@@ -147,7 +147,7 @@ O enunciado exige:
 - o custo da mudança e por que compensa.
 -->
 
-**Commit "depois":** `[hash]` (Lucas Esteves, 03/11/2026).
+**Commit "depois":** `17af148` (Lucas Esteves, 03/11/2026).
 
 **O que mudou.** Das quatro responsabilidades listadas no "Antes", duas saíram do
 `flask_app.py` para módulos próprios em `entrypoints/`. O código foi movido sem mudar nenhuma
