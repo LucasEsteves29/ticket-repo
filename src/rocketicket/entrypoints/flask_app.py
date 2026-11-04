@@ -1,6 +1,10 @@
+from collections.abc import Callable
+from typing import Any
+
 from flask import Flask, g
 
 from rocketicket.adapters import orm, repository
+from rocketicket.domain.model import Ticket
 from rocketicket.entrypoints.entrada import (
     ler_booleano,
     ler_decimal,
@@ -15,7 +19,18 @@ CAMPOS_ANUNCIO = ("id", "ticket_id", "vendedor_id", "preco")
 CAMPOS_PEDIDO = ("id", "ticket_id", "comprador_id")
 CAMPOS_CONFIRMACAO = ("pagamento_aprovado",)
 
-def create_app(session_factory):
+def create_app(
+    session_factory,
+    *,
+    ticket_repository_factory: Callable[[Any], repository.AbstractRepository[Ticket]] = (
+        repository.SqlAlchemyTicketRepository
+    ),
+):
+    """Compõe a aplicação e permite escolher a persistência de Ticket.
+
+    A fábrica recebe a sessão da requisição; o chamador continua responsável
+    por confirmar a transação, e o teardown fecha a sessão.
+    """
     orm.start_mappers()
     app = Flask(__name__)
 
@@ -39,7 +54,7 @@ def create_app(session_factory):
             ler_texto(dados, "evento_id"),
             ler_decimal(dados, "valor_original"),
             ler_texto(dados, "dono_id"),
-            repository.SqlAlchemyTicketRepository(g.session),
+            ticket_repository_factory(g.session),
             g.session,
         )
         return {"id": ticket_id}, 201
@@ -54,7 +69,7 @@ def create_app(session_factory):
             ler_texto(dados, "vendedor_id"),
             ler_decimal(dados, "preco"),
             repository.SqlAlchemyVendaRepository(g.session),
-            repository.SqlAlchemyTicketRepository(g.session),
+            ticket_repository_factory(g.session),
             g.session,
         )
         return {"id": venda_id}, 201
@@ -81,7 +96,7 @@ def create_app(session_factory):
             pedido_id,
             aprovado,
             repository.SqlAlchemyPedidoRepository(g.session),
-            repository.SqlAlchemyTicketRepository(g.session),
+            ticket_repository_factory(g.session),
             g.session,
         )
         return {"id": pedido_id, "pagamento": "aprovado" if aprovado else "recusado"}, 200
