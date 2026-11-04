@@ -441,6 +441,29 @@ responsabilidade pelo conteúdo é minha.
 
 ## fase2-checkpoint-2 — SOLID
 
+### Caio Jose Carneiro (@caiojosesouz-dotcom)
+
+**Entrega:** no C1, os commits `8d7e4d1` e `e907303` documentaram a violação de DIP
+na rota de Ticket a partir do código de `f85f2d4` (29/09/2026). No C2, o commit
+`ed6a19a` (03/11/2026) adicionou `ticket_repository_factory` à `create_app()` e
+substituiu a instanciação direta de `SqlAlchemyTicketRepository` nos endpoints de
+emissão, anúncio e confirmação de pedido. A seção "Depois" em `docs/solid.md`
+registra a mudança, os testes, o custo e o limite da refatoração.
+
+**Decisão:** manter SQLAlchemy como padrão na composição para preservar os chamadores
+existentes e receber uma fábrica que devolve `AbstractRepository[Ticket]`. Ela recebe
+a sessão da própria requisição. O service continua fazendo commit e o teardown continua
+fechando a sessão. Os repositórios de outros agregados e o mapeamento ORM não foram
+generalizados nesta entrega.
+
+**Validação:** 235 testes passaram com Python 3.12: os 231 existentes e quatro novos
+em `tests/integration/test_ticket_repository_injection.py`. Os novos cenários cobrem
+emissão com fake sem banco, duplicidade, entrada inválida, ciclo de vida da sessão e
+o fluxo de compra usando a fábrica nas três rotas que acessam Ticket.
+
+**Uso de IA:** o Codex (OpenAI) auxiliou na análise do histórico, na implementação
+da injeção, na escrita dos testes, na execução da suíte e na redação da documentação.
+
 ### Lucas Esteves (@LucasEsteves29)
 
 **O que fiz:** criei o docs/solid.md com a introdução do checkpoint e uma seção por

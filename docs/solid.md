@@ -315,6 +315,65 @@ O enunciado exige:
 - o custo da mudança e por que compensa.
 -->
 
+**Commit da refatoração:** `ed6a19a` (caiojosesouz-dotcom, 03/11/2026),
+`refactor(ticket): injeta fabrica de repositorios nas rotas HTTP`.
+
+**O que mudou.** A `create_app()` passou a receber o argumento opcional
+`ticket_repository_factory`, uma função que recebe a sessão da requisição e devolve
+um `AbstractRepository[Ticket]`. O padrão continua sendo `SqlAlchemyTicketRepository`,
+escolhido na composição da aplicação. Os endpoints `POST /tickets`, `POST /anuncios`
+e `POST /pedidos/<pedido_id>/confirmacao` agora chamam essa fábrica, em vez de
+construírem diretamente o adaptador de Ticket.
+
+```python
+def create_app(
+    session_factory,
+    *,
+    ticket_repository_factory: Callable[[Any], repository.AbstractRepository[Ticket]] = (
+        repository.SqlAlchemyTicketRepository
+    ),
+):
+    # (...) dentro da rota emitir_ticket:
+    ticket_id = services.emitir_ticket(
+        ler_texto(dados, "id"),
+        ler_texto(dados, "evento_id"),
+        ler_decimal(dados, "valor_original"),
+        ler_texto(dados, "dono_id"),
+        ticket_repository_factory(g.session),
+        g.session,
+    )
+```
+
+Agora quem monta a aplicação pode passar
+`create_app(session_factory, ticket_repository_factory=lambda session: fake_repo)`.
+O handler trabalha com a abstração que o service já aceitava; a escolha de SQLAlchemy
+fica no parâmetro padrão da composição. A fábrica é chamada em cada operação, com a
+mesma sessão entregue ao service, evitando guardar um repositório SQLAlchemy com
+sessão compartilhada entre requisições.
+
+**Como os testes preservam o comportamento.** O comando
+`uv run --python 3.12 --with pytest --with SQLAlchemy --with Flask pytest tests`
+passou com **235 testes**: os 231 existentes e quatro novos em
+`tests/integration/test_ticket_repository_injection.py`. Os novos testes verificam:
+
+- emissão com `FakeTicketRepository`, resposta `201`, corpo `{"id": "t1"}` e dados
+  salvos no fake, usando uma sessão sem `add()`/`get()` e sem banco de dados;
+- ID repetido com resposta `409`, sem commit adicional, e uma sessão por requisição;
+- entrada inválida com resposta `400`, sem persistência nem commit;
+- fluxo de emissão, anúncio, pedido e confirmação com SQLite, comprovando que os
+  três endpoints que acessam Ticket utilizam a fábrica configurada.
+
+Os testes com fake também verificam o fechamento das sessões. Os testes existentes
+continuam usando `create_app(session_factory)`, portanto exercitam o adaptador padrão,
+as regras de domínio, a persistência e os contratos HTTP anteriores.
+
+**Custo e limite da mudança.** Foi acrescentado um parâmetro opcional e substituídas
+três instanciações de Ticket por chamadas da fábrica. Isso permite trocar o repositório
+ou testar a rota com um fake sem editar o handler nem aplicar patch no adaptador.
+A aplicação ainda inicializa os mapeadores ORM e os repositórios de Venda e Pedido
+continuam concretos; a mudança resolve a escolha do repositório de Ticket, sem propor
+uma abstração para toda a infraestrutura ou para o controle de transações.
+
 ## Igor — SRP (domain/model.py e service_layer/services.py)
 
 ### Antes
