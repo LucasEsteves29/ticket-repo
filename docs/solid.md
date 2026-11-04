@@ -658,6 +658,39 @@ O enunciado exige:
 - o problema concreto que a violação causa.
 -->
 
+**Princípio violado:** OCP, o Princípio Aberto/Fechado. Uma entidade deve estar aberta
+para extensão, mas fechada para modificação.
+
+**Commit "antes":** `d9ef901` (Guilherme Boechat, 24/09/2026), `feat(pedido): adiciona
+confirmar(), cancelar() e transições do Pagamento`. O código abaixo é o método
+`Pedido.confirmar()` daquele commit:
+
+```python
+def confirmar(self, status_ticket: StatusTicket) -> None:
+    self._exigir_aberto("ser confirmado")
+    if self.pagamento.status is not StatusPagamento.APROVADO:
+        raise PagamentoNaoAprovado(
+            f"pedido {self.id} tem pagamento {self.pagamento.status.value}"
+        )
+    if status_ticket is not StatusTicket.ANUNCIADO:
+        raise TicketIndisponivel(
+            f"ticket {self.ticket_id} não está à venda "
+            f"(status: {status_ticket.value})"
+        )
+    self.status = StatusPedido.CONFIRMADO
+```
+
+**Problema concreto.** O método conhece diretamente todas as condições necessárias para
+confirmar um pedido. A inclusão de qualquer nova regra — por exemplo, validar uma política
+de comprador, uma restrição do evento ou uma etapa antifraude — exigiria abrir e editar
+`Pedido.confirmar()`. Além de aumentar a responsabilidade da entidade, isso faz cada nova
+regra alterar um método já coberto por várias combinações de testes e aumenta o risco de
+quebrar as regras existentes de pagamento ou disponibilidade do ticket.
+
+As duas condições também não podem ser estendidas por uma implementação alternativa: elas
+estão codificadas como `if` dentro do método, e não representadas por um contrato que aceite
+novas regras.
+
 ### Depois
 
 <!--
@@ -668,3 +701,46 @@ O enunciado exige:
 - como os testes garantiram que o comportamento não mudou;
 - o custo da mudança e por que compensa.
 -->
+
+**Commit "depois":** `50077c9` (Guilherme Boechat, 02/11/2026), `refactor(pedido): aplicar
+OCP na confirmação`.
+
+**O que mudou.** As validações foram extraídas para objetos que implementam o contrato
+`RegraDeConfirmacao`: `PagamentoAprovadoParaConfirmacao` e
+`TicketAnunciadoParaConfirmacao`. O `Pedido` recebe uma sequência de regras, mantendo essas
+duas como padrão para preservar o comportamento atual:
+
+```python
+class RegraDeConfirmacao(Protocol):
+    def validar(self, pedido: "Pedido", status_ticket: StatusTicket) -> None: ...
+
+
+class Pedido:
+    def __init__(..., regras_confirmacao=None):
+        self._regras_confirmacao = tuple(
+            regras_confirmacao or REGRAS_DE_CONFIRMACAO_PADRAO
+        )
+
+    def confirmar(self, status_ticket: StatusTicket) -> None:
+        self._exigir_aberto("ser confirmado")
+        for regra in self._regras_confirmacao:
+            regra.validar(self, status_ticket)
+        self.status = StatusPedido.CONFIRMADO
+```
+
+Uma nova regra agora pode ser criada e passada ao agregado sem modificar o método
+`confirmar()`. A API existente continua funcionando, pois o conjunto padrão mantém as
+validações de pagamento aprovado e ticket anunciado.
+
+**Como os testes garantiram que o comportamento não mudou.** Os 21 testes de
+`tests/unit/test_pedido.py` continuaram passando, cobrindo confirmação válida, pagamento
+pendente ou recusado, ticket indisponível e pedidos encerrados. Também foi adicionado um
+teste que injeta uma regra nova e verifica que ela é executada sem alterar `Pedido.confirmar()`.
+A suíte completa passou após a refatoração.
+
+**Custo e por que compensa.** O custo foi criar o protocolo, duas regras concretas, um
+parâmetro opcional no construtor e um pequeno loop no método. Em troca, a confirmação deixa
+de possuir condições fixas: regras novas podem ser adicionadas por extensão, sem modificar
+o fluxo central nem reabrir as validações existentes. O fallback em `getattr()` também
+preserva o funcionamento de objetos `Pedido` reconstruídos pelo mapeamento ORM, que podem
+ser carregados sem executar o construtor.
