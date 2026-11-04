@@ -427,8 +427,6 @@ O enunciado exige:
 -->
 **Commit "depois":** `576af01` (Igor Leal, 03/11/2026), `refactor(venda): extrai PoliticaTetoPercentual aplicando SRP no agregado Venda`.
 
-<<<<<<< HEAD
-=======
 ### O que mudou
 
 Extraí o cálculo e a validação do teto de revenda de dentro da entidade `Venda` para uma classe dedicada no domínio, `PoliticaTetoPercentual` (`src/rocketicket/domain/model.py`), e permiti parametrizar a política tanto em `Venda.__init__()` quanto no caso de uso `criar_anuncio()` (`src/rocketicket/service_layer/services.py`), mantendo o teto de 110% como valor padrão:
@@ -506,7 +504,6 @@ O que cada problema apontado no "Antes" passou a ter:
 - **Por que compensa:** o cálculo do teto de revenda com `Decimal` e `ROUND_DOWN` é a principal invariante financeira da `Venda` (ADR 0003). Isolá-lo em `PoliticaTetoPercentual` elimina a mistura de responsabilidades que levou aos commits `331685a` e `186b52c` na Fase 1, permite testar e consultar o limite máximo diretamente sem criar anúncios falsos e abre caminho para variar a política de teto sem modificar a entidade `Venda`.
 
 
->>>>>>> origin/main
 ## Miguel — ISP (`adapters/repository.py`)
 
 ### Antes

@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from rocketicket.adapters.repository import AbstractRepository, AbstractVendaRepository
+from rocketicket.adapters.repository import AbstractRepository, ConsultaVendaAtiva
 from rocketicket.domain import model
 
 
@@ -85,7 +85,7 @@ def criar_pedido(
     ticket_id: str,
     comprador_id: str,
     repo_pedidos: AbstractRepository[model.Pedido],
-    repo_vendas: AbstractVendaRepository,
+    repo_vendas: ConsultaVendaAtiva,
     session,
 ) -> str:
     venda = repo_vendas.get_ativa_por_ticket(ticket_id)
