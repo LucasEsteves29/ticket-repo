@@ -620,3 +620,49 @@ interface ConsultaVendaAtiva, a mudança no criar_pedido e os testes de
 test_consulta_venda_ativa.py, e me ajudou a resolver conflito do docs/solid.md no merge com a main.
 Eu rodei a suíte de testes na minha máquina, revisei o código e o texto e fiz os commits.
 A responsabilidade pelo conteúdo é minha.
+
+---
+
+## fase2-checkpoint-3 — GoF
+
+### Lucas Esteves (@LucasEsteves29)
+
+**O que fiz:** apliquei o padrão State ao ciclo de vida do agregado Ticket, em
+domain/model.py. Antes de refatorar, criei o teste de caracterização
+tests/unit/test_ticket_estados.py: uma matriz com os 4 valores de StatusTicket contra
+anunciar(), retirar_anuncio(), vender() e usar(), que registra para cada par a transição ou
+a exceção com a mensagem exata, e rodei esse teste contra o código antigo. Depois criei a
+classe base EstadoTicket, com o comportamento padrão, e uma subclasse por estado
+(Disponivel, Anunciado, Vendido e Usado), que sobrescreve só o que muda. O Ticket passou a
+delegar os 4 métodos ao estado atual. Criei também o esqueleto do docs/gof.md, com a
+introdução e uma seção por integrante. A minha seção do gof.md fica para a próxima etapa.
+
+**Arquivos:** src/rocketicket/domain/model.py, tests/unit/test_ticket_estados.py,
+docs/gof.md, DECISIONS.md
+
+**Commits:**
+
+**Decisão:**
+- Mantive status como única fonte de verdade: o estado é obtido de um dicionário
+  StatusTicket -> instância, por meio da propriedade _estado, e nada fica guardado no
+  Ticket. A coluna persistida é status e a leitura do banco não chama __init__, então um
+  objeto de estado guardado na instância não existiria nos tickets carregados. Recriá-lo
+  exigiria um gancho do ORM, e o model.py não pode conhecer o SQLAlchemy.
+- Escrevi a matriz antes de refatorar e conferi as mensagens exatas, não só o tipo da
+  exceção. Ela passou contra o código antigo (21 testes), e os 235 testes existentes
+  passaram sem nenhuma alteração. A suíte ficou em 256 antes e depois da refatoração: é essa
+  a evidência de que o comportamento não mudou.
+- Incluí DISPONIVEL na matriz mesmo sendo inalcançável pela API, porque o código antigo tinha
+  um comportamento definido para esse status e a refatoração poderia mudá-lo sem ninguém
+  perceber. Só nesse helper o status é atribuído na mão.
+- A classe base guarda o comportamento padrão, e cada estado sobrescreve só o que muda. Por
+  isso Disponivel ficou sem nenhum método. O custo é que o anunciar() padrão faz a transição,
+  como o código antigo fazia: um status novo pode ser anunciado se não sobrescrever o método,
+  e também precisa entrar em _ESTADOS. O model.py cresceu 57 linhas (+97/-40).
+
+**Uso de IA:** usei o Claude, como assistente nesta etapa do checkpoint. Ele leu o
+repositório (código, testes, documentação e histórico de commits), rodou o pytest tests,
+implementamos junto o padrão State no model.py. 
+No docs/gof.md, criou apenas o esqueleto inicial. Eu revisei o código e o texto,
+conferi os números e as afirmações sobre o código e ajustei o que não correspondia ao que eu
+tinha pedido.
