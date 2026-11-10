@@ -635,12 +635,21 @@ a exceção com a mensagem exata, e rodei esse teste contra o código antigo. De
 classe base EstadoTicket, com o comportamento padrão, e uma subclasse por estado
 (Disponivel, Anunciado, Vendido e Usado), que sobrescreve só o que muda. O Ticket passou a
 delegar os 4 métodos ao estado atual. Criei também o esqueleto do docs/gof.md, com a
-introdução e uma seção por integrante. A minha seção do gof.md fica para a próxima etapa.
+introdução e uma seção por integrante. Essa primeira etapa não incluiu a minha seção do
+gof.md.
 
-**Arquivos:** src/rocketicket/domain/model.py, tests/unit/test_ticket_estados.py,
-docs/gof.md, DECISIONS.md
+Na segunda etapa, preenchi a minha seção do docs/gof.md, sem alterar código: o nome e a
+categoria; o contexto e o problema, com o usar() antes e depois do State; as alternativas
+(manter os if, uma tabela de transições e uma subclasse de Ticket por estado); os
+participantes mapeados para as classes reais; o diagrama de classes em Mermaid; o teste,
+com os números do pytest tests e do git show a4f0292 --stat; e o custo.
 
-**Commits:**
+**Arquivos:** na primeira etapa, src/rocketicket/domain/model.py,
+tests/unit/test_ticket_estados.py, docs/gof.md e DECISIONS.md; na segunda, docs/gof.md e
+DECISIONS.md.
+
+**Commits:** a4f0292 (09/11, padrão State, teste de caracterização e esqueleto do
+docs/gof.md) e [hash] (10/11, minha seção do docs/gof.md).
 
 **Decisão:**
 - Mantive status como única fonte de verdade: o estado é obtido de um dicionário

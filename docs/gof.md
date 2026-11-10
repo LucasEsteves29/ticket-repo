@@ -4,52 +4,249 @@
 
 ### Nome e categoria
 
-<!--
-Responsável: Lucas
-O enunciado exige: o nome do padrão e a sua categoria no GoF.
--->
+**State**, padrão comportamental do GoF. A intenção, nos termos do catálogo, é permitir que
+um objeto altere o seu comportamento quando o seu estado interno muda, como se tivesse
+mudado de classe. No RocketTicket, o objeto é o `Ticket`, e o estado interno é o `status`.
 
 ### Contexto e problema
 
-<!--
-Responsável: Lucas
-O enunciado exige: o contexto e o problema real do domínio que o padrão resolve.
--->
+O `Ticket` tem quatro status (`DISPONIVEL`, `ANUNCIADO`, `VENDIDO` e `USADO`) e quatro
+métodos cujo resultado depende deles: `anunciar()`, `retirar_anuncio()`, `vender()` e
+`usar()`. Antes do State, cada método decidia o que era permitido com uma cadeia de `if`
+sobre `self.status`: eram 9 comparações de status nos quatro métodos, mais a regra do
+próprio dono em `vender()`. Este é o `usar()` em `513bc0a`, o commit anterior a `a4f0292`
+(docstring omitida):
+
+```python
+def usar(self) -> None:
+    if self.status is StatusTicket.USADO:
+        raise TicketJaUsado(f"ticket {self.id} já foi usado")
+    if self.status is StatusTicket.ANUNCIADO:
+        raise TicketAnunciado(
+            f"ticket {self.id} está anunciado e não pode ser usado"
+        )
+    if self.status is not StatusTicket.VENDIDO:
+        raise TicketNaoVendido(
+            f"ticket {self.id} não foi vendido (status: {self.status.value})"
+        )
+    self.status = StatusTicket.USADO
+```
+
+O comportamento de cada status ficava espalhado pelos quatro métodos, misturado ao de todos
+os outros. Um estado novo, como reintroduzir `DISPONIVEL` como o status da venda primária,
+obrigava a editar os quatro. A ordem das checagens também importava: em `vender()`, `USADO`
+precisava ser testado antes de "não anunciado", porque um ticket usado satisfaz as duas
+condições, e é a ordem que decide qual exceção sai. O próprio `DISPONIVEL`, que nenhum
+caminho alcança, tinha um comportamento que ninguém escreveu de propósito: era o que sobrava
+depois de passar por todos os `if`.
+
+Depois de `a4f0292`, o Ticket só delega, e cada status responde por si (as partes omitidas
+estão marcadas com `# (...)`):
+
+```python
+class Ticket:
+    # (...)
+    @property
+    def _estado(self) -> EstadoTicket:
+        return _ESTADOS[self.status]
+
+    def usar(self) -> None:
+        self._estado.usar(self)
+
+
+class Anunciado(EstadoTicket):
+    # (...)
+    def usar(self, ticket: "Ticket") -> None:
+        raise TicketAnunciado(f"ticket {ticket.id} está anunciado e não pode ser usado")
+
+
+class Vendido(EstadoTicket):
+    def usar(self, ticket: "Ticket") -> None:
+        ticket.status = StatusTicket.USADO
+```
 
 ### Alternativa considerada
 
-<!--
-Responsável: Lucas
-O enunciado exige: a alternativa considerada.
--->
+- **Manter os `if`.** É o código mais curto e deixa o fluxo de cada método num lugar só.
+  Foi descartado pelo problema acima: cada status novo, ou cada mudança na regra de um
+  status, continuaria passando pelos quatro métodos e pela ordem das checagens.
+- **Uma tabela de transições** `(status, método) -> status de destino`, como
+  `{(VENDIDO, "anunciar"): ANUNCIADO, ...}`. Ela descreve bem as 5 transições válidas da
+  matriz de caracterização, mas não basta para as outras 11 posições, que são recusas: cada
+  par inválido lança uma exceção diferente, com mensagem própria. São 5 classes de exceção e
+  9 mensagens distintas, e só a `TicketJaUsado` tem uma mensagem por método. Além disso, o
+  `vender()` tem uma regra que não depende só do status, a de não vender ao próprio dono
+  (`CompraDoProprioTicket`), checada depois do status. A transição do `vender()` também
+  troca o dono, o que uma tabela de status não representa. Para cobrir tudo isso, cada célula
+  teria de guardar uma função, e a tabela viraria o State sem nomes.
+- **Uma subclasse de `Ticket` por estado.** Descartada porque o ORM mapeia uma única classe:
+  o `orm.py` faz `map_imperatively(model.Ticket, tickets)`. Com subclasses, cada transição
+  exigiria trocar a classe do objeto, e o mapeamento teria de virar herança polimórfica, com
+  o `status` como discriminador. Isso levaria para o `adapters/orm.py` uma decisão de
+  comportamento do domínio. No State, a classe mapeada continua uma só, e o que muda é o
+  objeto para o qual ela delega.
 
 ### Participantes (classes reais)
 
-<!--
-Responsável: Lucas
-O enunciado exige: os participantes do padrão, mapeados para as classes reais do código.
--->
+| Papel no GoF | No código (`domain/model.py`) | O que faz |
+|---|---|---|
+| Context | `Ticket` | guarda os dados e o `status`; `anunciar()`, `retirar_anuncio()`, `vender()` e `usar()` só delegam ao estado atual, passando o próprio ticket |
+| State | `EstadoTicket` | declara os quatro métodos, todos recebendo o ticket, com o comportamento padrão: `anunciar()` passa para `ANUNCIADO`, `retirar_anuncio()` e `vender()` lançam `TicketNaoAnunciado`, e `usar()` lança `TicketNaoVendido` |
+| ConcreteState | `Disponivel`, `Anunciado`, `Vendido` e `Usado` | cada um sobrescreve só o que muda no seu status: `Disponivel` não sobrescreve nada, `Vendido` sobrescreve só `usar()`, e `Anunciado` e `Usado` sobrescrevem os quatro |
+| (escolha do estado) | `_ESTADOS` e a propriedade `Ticket._estado` | `_ESTADOS` liga cada `StatusTicket` à instância do seu estado, e `_estado` devolve `_ESTADOS[self.status]` |
+
+**Por que o estado é derivado do `status`.** No GoF, o Context guarda uma referência ao
+objeto State e a troca a cada transição. Aqui o Ticket não guarda o estado: o `status` é a
+única fonte de verdade, e o `_estado` é recalculado a cada chamada. O motivo é o mapeamento
+imperativo (ADR 0001): a coluna persistida é `status`, e o SQLAlchemy recria o Ticket lido do
+banco sem chamar `__init__`. Um atributo de estado criado no `__init__` não existiria nos
+tickets carregados, e recriá-lo exigiria um gancho do ORM, que o `model.py` não pode conhecer.
+
+Esse desenho tem duas consequências:
+
+- **Quem faz a transição é o ConcreteState.** `Anunciado.vender()` troca `ticket.dono_id` e
+  `ticket.status`. Como o estado vem do status, mudar o status já troca o estado.
+- **Os estados são compartilhados.** Eles não guardam nada e recebem o ticket como
+  parâmetro, então uma instância de cada, no `_ESTADOS`, serve para todos os tickets. O GoF
+  prevê esse compartilhamento quando o estado não tem dados próprios.
 
 ### Diagrama de classes (Mermaid)
 
-<!--
-Responsável: Lucas
-O enunciado exige: o diagrama de classes em Mermaid, com a fonte em texto neste arquivo.
--->
+```mermaid
+classDiagram
+    class Ticket {
+        +id: str
+        +evento_id: str
+        +valor_original: Decimal
+        +dono_id: str
+        +status: StatusTicket
+        -_estado: EstadoTicket
+        +anunciar()
+        +retirar_anuncio()
+        +vender(novo_dono_id: str)
+        +usar()
+    }
+
+    class EstadoTicket {
+        +anunciar(ticket: Ticket)
+        +retirar_anuncio(ticket: Ticket)
+        +vender(ticket: Ticket, novo_dono_id: str)
+        +usar(ticket: Ticket)
+        -_nao_anunciado(ticket: Ticket) TicketNaoAnunciado
+    }
+
+    class Disponivel
+
+    class Anunciado {
+        +anunciar(ticket: Ticket)
+        +retirar_anuncio(ticket: Ticket)
+        +vender(ticket: Ticket, novo_dono_id: str)
+        +usar(ticket: Ticket)
+    }
+
+    class Vendido {
+        +usar(ticket: Ticket)
+    }
+
+    class Usado {
+        +anunciar(ticket: Ticket)
+        +retirar_anuncio(ticket: Ticket)
+        +vender(ticket: Ticket, novo_dono_id: str)
+        +usar(ticket: Ticket)
+    }
+
+    class ESTADOS["_ESTADOS"] {
+        <<dict>>
+        DISPONIVEL: Disponivel
+        ANUNCIADO: Anunciado
+        VENDIDO: Vendido
+        USADO: Usado
+    }
+
+    EstadoTicket <|-- Disponivel
+    EstadoTicket <|-- Anunciado
+    EstadoTicket <|-- Vendido
+    EstadoTicket <|-- Usado
+    Ticket ..> ESTADOS : _estado busca pelo status
+    ESTADOS o-- EstadoTicket : uma instância por status
+    Ticket ..> EstadoTicket : delega os 4 métodos
+    EstadoTicket ..> Ticket : altera status e dono_id
+```
 
 ### Teste
 
-<!--
-Responsável: Lucas
-O enunciado exige: o teste que cobre o padrão.
--->
+O `tests/unit/test_ticket_estados.py` é a matriz de caracterização. Para cada um dos 16 pares
+(4 status × 4 métodos), ele monta o ticket naquele status, chama o método e confere a
+transição (status e dono finais) ou a exceção, com a mensagem exata. Nas recusas, confere
+também que o ticket não mudou. Dos 16 pares, 5 são transições e 11 são recusas. O arquivo
+tem 21 testes:
+
+| Testes | O que conferem |
+|---|---|
+| 16 `test_matriz` | os 16 pares, um por status em cada método (`TestAnunciar`, `TestRetirarAnuncio`, `TestVender` e `TestUsar`) |
+| 1 `test_cobre_todos_os_status_em_cada_metodo` | falha se algum status ficar fora da matriz em algum método |
+| 1 `test_vender_ao_proprio_dono_falha` | a `CompraDoProprioTicket`, com a mensagem exata, num ticket anunciado |
+| 3 `test_status_tem_prioridade_sobre_a_regra_do_proprio_dono` | fora de `ANUNCIADO`, a checagem de status vem antes da regra do próprio dono |
+
+Os tickets são montados pela API do domínio, menos o de `DISPONIVEL`: como nenhum caminho
+alcança esse status, o helper `disponivel()` o atribui na mão, só para fixar o comportamento
+que o código antigo tinha.
+
+A matriz foi escrita e rodada antes da refatoração, contra o código com os `if`. Isso pode ser
+conferido, porque o arquivo de `a4f0292` passa também contra o `model.py` de `a4f0292~1`. Os
+comandos abaixo criam uma cópia do repositório nesse commit, trazem o teste de `a4f0292` e
+rodam só ele, com o resultado `21 passed`:
+
+```sh
+git worktree add ../antes-do-state a4f0292~1
+git -C ../antes-do-state checkout a4f0292 -- tests/unit/test_ticket_estados.py
+pytest ../antes-do-state/tests/unit/test_ticket_estados.py
+git worktree remove --force ../antes-do-state
+```
+
+A suíte existente passou sem nenhuma alteração. O `git show a4f0292 --stat` mostra que o
+único arquivo de teste do commit é o novo:
+
+```text
+$ git show a4f0292 --stat
+ DECISIONS.md                      |  46 +++++++
+ docs/gof.md                       | 256 ++++++++++++++++++++++++++++++++++++++
+ src/rocketicket/domain/model.py   | 137 ++++++++++++++------
+ tests/unit/test_ticket_estados.py | 192 ++++++++++++++++++++++++++++
+ 4 files changed, 591 insertions(+), 40 deletions(-)
+
+$ pytest tests    # em a4f0292^, antes do State
+235 passed
+$ pytest tests    # em a4f0292, com o State
+256 passed
+```
+
+Os 256 são os 235 testes que já existiam, sem nenhuma mudança, mais os 21 da matriz.
 
 ### Custo
 
-<!--
-Responsável: Lucas
-O enunciado exige: o custo de introduzir o padrão.
--->
+- **Mais classes e uma indireção para ler o fluxo.** São cinco classes e um dicionário a
+  mais, e o `model.py` cresceu 57 linhas no commit (+97/−40). Para saber o que
+  `ticket.vender()` faz, não basta ler o `Ticket`: é preciso abrir o `EstadoTicket.vender()`,
+  que vale para dois status, e as versões de `Anunciado` e de `Usado`.
+- **O estado vive separado do Ticket.** Os ConcreteStates escrevem `ticket.status` e
+  `ticket.dono_id` de fora da classe, então as regras que mudam os dados do Ticket deixaram
+  de morar só nele e se dividem entre cinco classes.
+- **`DISPONIVEL` ganhou uma classe mesmo sendo inalcançável.** `Disponivel` existe para o
+  `_ESTADOS` cobrir todos os status e para preservar o comportamento que o código antigo tinha
+  para esse status.
+- **O `anunciar()` padrão faz a transição.** Como no código antigo, um status que não
+  sobrescreva `anunciar()` pode ser anunciado. Um status novo também precisa entrar no
+  `_ESTADOS`, senão o `_estado` lança `KeyError`. O
+  `test_cobre_todos_os_status_em_cada_metodo` obriga a pôr o status novo na matriz, onde as
+  duas falhas aparecem.
+
+**Por que compensa.** Um estado novo é uma classe nova e uma linha no `_ESTADOS`, sem tocar
+nos métodos do Ticket, e mudar a regra de um status mexe só na classe dele. No exemplo do
+contexto, reintroduzir `DISPONIVEL` como venda primária passa a ser editar a `Disponivel`, e
+não os quatro métodos e a ordem de nove checagens. O ganho vale para estados novos, não para
+operações novas: um método novo no Ticket, como um `reservar()`, ainda exige um método no
+`EstadoTicket` e uma decisão em cada estado.
 
 ## Caio — Decorator
 
