@@ -21,3 +21,15 @@ transação; o serviço confirma o commit. A tabela faz parte de `orm.metadata` 
 precisa ser criada também em bancos existentes antes de usar a rota.
 
 Validação: `python -m pytest tests`.
+
+## Confirmação de Pedido com gateway de pagamento (Guilherme)
+
+`POST /pedidos/<pedido_id>/confirmacao` recebe `{"token_pagamento": "..."}` e cobra o
+valor do pedido no gateway de pagamento externo simulado, através do
+`AdaptadorGatewayExterno` (padrão Adapter, ver `docs/gof.md`). Resposta `200` com
+`{"id": "...", "pagamento": "aprovado"}` ou `{"id": "...", "pagamento": "recusado"}`.
+
+Tokens do gateway simulado: `tok_aprovado` aprova, `tok_recusado` recusa, `tok_falha`
+simula o gateway fora do ar (`502`, nada é salvo e dá para tentar de novo) e qualquer
+outro token é recusado. Pedido ou ticket inexistente retorna `404`. Pedido já
+confirmado, cancelado ou com pagamento recusado retorna `400` sem cobrar de novo.

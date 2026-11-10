@@ -1,5 +1,11 @@
 import pytest
 
+from rocketicket.adapters.gateway_simulado import (
+    TOKEN_APROVADO,
+    TOKEN_FALHA,
+    TOKEN_RECUSADO,
+)
+
 
 def dados_ticket(**campos):
     return {
@@ -86,7 +92,7 @@ class TestPostPedidos:
 class TestPostConfirmacaoPedido:
     def test_pagamento_aprovado_devolve_200(self, client, pedido_aberto):
         resposta = client.post(
-            "/pedidos/p1/confirmacao", json={"pagamento_aprovado": True}
+            "/pedidos/p1/confirmacao", json={"token_pagamento": TOKEN_APROVADO}
         )
 
         assert resposta.status_code == 200
@@ -94,7 +100,7 @@ class TestPostConfirmacaoPedido:
 
     def test_pagamento_recusado_devolve_200_com_recusa(self, client, pedido_aberto):
         resposta = client.post(
-            "/pedidos/p1/confirmacao", json={"pagamento_aprovado": False}
+            "/pedidos/p1/confirmacao", json={"token_pagamento": TOKEN_RECUSADO}
         )
 
         assert resposta.status_code == 200
@@ -103,20 +109,20 @@ class TestPostConfirmacaoPedido:
     def test_pagamento_recusado_nao_pode_ser_aprovado_depois(
         self, client, pedido_aberto
     ):
-        client.post("/pedidos/p1/confirmacao", json={"pagamento_aprovado": False})
+        client.post("/pedidos/p1/confirmacao", json={"token_pagamento": TOKEN_RECUSADO})
 
         resposta = client.post(
-            "/pedidos/p1/confirmacao", json={"pagamento_aprovado": True}
+            "/pedidos/p1/confirmacao", json={"token_pagamento": TOKEN_APROVADO}
         )
 
         assert resposta.status_code == 400
         assert "erro" in resposta.get_json()
 
     def test_pedido_ja_confirmado_devolve_400(self, client, pedido_aberto):
-        client.post("/pedidos/p1/confirmacao", json={"pagamento_aprovado": True})
+        client.post("/pedidos/p1/confirmacao", json={"token_pagamento": TOKEN_APROVADO})
 
         resposta = client.post(
-            "/pedidos/p1/confirmacao", json={"pagamento_aprovado": True}
+            "/pedidos/p1/confirmacao", json={"token_pagamento": TOKEN_APROVADO}
         )
 
         assert resposta.status_code == 400
@@ -126,7 +132,7 @@ class TestPostConfirmacaoPedido:
         client.post("/pedidos/p1/cancelamento")
 
         resposta = client.post(
-            "/pedidos/p1/confirmacao", json={"pagamento_aprovado": True}
+            "/pedidos/p1/confirmacao", json={"token_pagamento": TOKEN_APROVADO}
         )
 
         assert resposta.status_code == 400
@@ -134,7 +140,7 @@ class TestPostConfirmacaoPedido:
 
     def test_pedido_inexistente_devolve_404(self, client):
         resposta = client.post(
-            "/pedidos/fantasma/confirmacao", json={"pagamento_aprovado": True}
+            "/pedidos/fantasma/confirmacao", json={"token_pagamento": TOKEN_APROVADO}
         )
 
         assert resposta.status_code == 404
@@ -146,14 +152,69 @@ class TestPostConfirmacaoPedido:
         assert resposta.status_code == 400
         assert "erro" in resposta.get_json()
 
-    @pytest.mark.parametrize("valor", ["true", 1, None])
-    def test_pagamento_aprovado_invalido_devolve_400(self, client, pedido_aberto, valor):
+    @pytest.mark.parametrize("valor", ["", 123, None, True])
+    def test_token_invalido_devolve_400(self, client, pedido_aberto, valor):
         resposta = client.post(
-            "/pedidos/p1/confirmacao", json={"pagamento_aprovado": valor}
+            "/pedidos/p1/confirmacao", json={"token_pagamento": valor}
         )
 
         assert resposta.status_code == 400
         assert "erro" in resposta.get_json()
+
+
+    def test_token_desconhecido_e_recusado_pelo_gateway(self, client, pedido_aberto):
+        resposta = client.post(
+            "/pedidos/p1/confirmacao", json={"token_pagamento": "tok_inventado"}
+        )
+
+        assert resposta.status_code == 200
+        assert resposta.get_json() == {"id": "p1", "pagamento": "recusado"}
+
+    def test_gateway_indisponivel_devolve_502_e_permite_tentar_de_novo(
+        self, client, pedido_aberto
+    ):
+        resposta = client.post(
+            "/pedidos/p1/confirmacao", json={"token_pagamento": TOKEN_FALHA}
+        )
+
+        assert resposta.status_code == 502
+        assert "erro" in resposta.get_json()
+
+        nova_tentativa = client.post(
+            "/pedidos/p1/confirmacao", json={"token_pagamento": TOKEN_APROVADO}
+        )
+
+        assert nova_tentativa.status_code == 200
+        assert nova_tentativa.get_json() == {"id": "p1", "pagamento": "aprovado"}
+
+
+class TestGatewayInjetado:
+    def test_create_app_usa_o_gateway_recebido(self, in_memory_db):
+        from sqlalchemy.orm import clear_mappers, sessionmaker
+
+        from conftest import FakeGatewayDePagamento
+        from rocketicket.entrypoints.flask_app import create_app
+
+        gateway = FakeGatewayDePagamento(aprovar=False)
+        try:
+            app = create_app(
+                sessionmaker(bind=in_memory_db), gateway_de_pagamento=gateway
+            )
+            client = app.test_client()
+            client.post("/tickets", json=dados_ticket())
+            client.post("/anuncios", json=dados_anuncio())
+            client.post("/pedidos", json=dados_pedido())
+
+            resposta = client.post(
+                "/pedidos/p1/confirmacao", json={"token_pagamento": TOKEN_APROVADO}
+            )
+        finally:
+            clear_mappers()
+
+        assert resposta.get_json() == {"id": "p1", "pagamento": "recusado"}
+        assert len(gateway.cobrancas) == 1
+        pedido_id, valor, token = gateway.cobrancas[0]
+        assert (pedido_id, str(valor), token) == ("p1", "105.00", TOKEN_APROVADO)
 
 
 class TestPostCancelamentoPedido:

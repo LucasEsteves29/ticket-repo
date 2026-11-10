@@ -666,3 +666,65 @@ implementamos junto o padrão State no model.py.
 No docs/gof.md, criou apenas o esqueleto inicial. Eu revisei o código e o texto,
 conferi os números e as afirmações sobre o código e ajustei o que não correspondia ao que eu
 tinha pedido.
+
+### Guilherme Boechat (@guilhermeboechat)
+
+**O que fiz:** apliquei o padrão Adapter para integrar ao Pedido um gateway de pagamento
+externo simulado. Criei o ClienteGatewayExterno (adapters/gateway_simulado.py), que faz o
+papel do SDK de um fornecedor, com contrato próprio: payload em dicionário, valor em
+centavos e status em texto ("approved", "declined" ou "error"). Em adapters/pagamento.py,
+criei a porta GatewayDePagamento, com cobrar(pedido_id, valor, token_pagamento) -> bool, e
+o AdaptadorGatewayExterno, que traduz a chamada e a resposta entre os dois contratos. O
+confirmar_pedido deixou de receber pagamento_aprovado e passou a cobrar o pedido pelo
+gateway. A rota POST /pedidos/<id>/confirmacao agora recebe token_pagamento, e uma falha
+do gateway devolve 502. Preenchi a minha seção do docs/gof.md e documentei a rota no
+README.md.
+
+**Arquivos:** src/rocketicket/adapters/pagamento.py,
+src/rocketicket/adapters/gateway_simulado.py, src/rocketicket/domain/model.py,
+src/rocketicket/service_layer/services.py, src/rocketicket/entrypoints/flask_app.py,
+src/rocketicket/entrypoints/erros.py, tests/conftest.py,
+tests/unit/test_gateway_pagamento.py, tests/unit/test_pedido.py,
+tests/unit/test_services_pedido.py, tests/e2e/test_pedido_api.py,
+tests/integration/test_ticket_repository_injection.py, docs/gof.md, README.md,
+DECISIONS.md
+
+**Commits:** o commit deste registro (09/11, Adapter, testes e documentação).
+
+**Decisão:**
+- Usei o Adapter de objeto, não o de classe. O adaptador recebe o cliente no construtor e
+  expõe só cobrar(), então o service nunca vê create_charge(). Isso também deixa trocar o
+  cliente por um espião nos testes.
+- A porta devolve bool e lança GatewayIndisponivel quando não há resposta definitiva.
+  "approved" e "declined" viram True e False; "error", ou qualquer resposta fora do
+  contrato, vira exceção. Assim, uma falha do fornecedor não é registrada como recusa, e o
+  pagamento continua PENDENTE para uma nova tentativa.
+- A conversão de reais para centavos não arredonda: fração de centavo lança ValueError
+  antes de chamar o fornecedor. É a mesma preocupação do ler_decimal, que já limita a
+  entrada a 2 casas.
+- A simulação decide pelo token, como os ambientes de teste dos gateways reais
+  (tok_aprovado, tok_recusado, tok_falha; qualquer outro é recusado). Assim os testes e2e
+  passam pelo adaptador e pelo gateway simulado reais sem precisar de injeção.
+- Criei Pedido.exigir_cobranca_pendente(), chamado pelo service antes de cobrar. Sem ele,
+  um pedido já confirmado, cancelado ou com pagamento recusado seria cobrado de novo, e só
+  depois o domínio recusaria a operação.
+- O gateway é montado no create_app() e pode ser trocado pelo parâmetro
+  gateway_de_pagamento, seguindo o que o Caio fez com a fábrica de repositórios de Ticket.
+- Limitação registrada no docs/gof.md: a disponibilidade do ticket só é verificada depois
+  da cobrança, pelas regras de confirmação. Se o ticket deixar de estar ANUNCIADO, a
+  cobrança aprovada não é salva. Com um fornecedor real, isso exigiria pré-autorização ou
+  estorno. O charge_id também não é persistido.
+- Os testes de Pedido que usavam pagamento_aprovado foram reescritos para o novo
+  contrato, e no teste de injeção do Caio mudei só o corpo da requisição de confirmação.
+  A suíte foi de 296 para 326 testes, todos passando.
+
+**Uso de IA:** escolhi o padrão (Adapter) e o problema que ele resolve no meu agregado:
+tirar do comprador a decisão sobre o pagamento e integrar ao Pedido um gateway de
+pagamento externo simulado. Usei o Claude como assistente na implementação. Ele leu o
+repositório (código, testes, documentação e histórico de commits) e, a partir do que eu
+pedi, escreveu o gateway simulado, a porta GatewayDePagamento, o AdaptadorGatewayExterno,
+a mudança no confirmar_pedido e na rota e os testes. Também rodou o pytest tests e redigiu
+um primeiro rascunho da minha seção do docs/gof.md, desta entrada e da nota no README.md.
+Eu revisei o código e o texto, conferi os números e as afirmações sobre o código, rodei a
+suíte na minha máquina, ajustei o que não correspondia ao que eu tinha pedido e fiz os
+commits. A responsabilidade pelo conteúdo é minha.
