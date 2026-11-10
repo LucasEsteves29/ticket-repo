@@ -5,8 +5,9 @@ from flask import Flask, g
 
 from rocketicket.adapters import orm, repository
 from rocketicket.adapters.audit import SqlAlchemyCheckInAudit
+from rocketicket.adapters.gateway_simulado import ClienteGatewayExterno
+from rocketicket.adapters.pagamento import AdaptadorGatewayExterno, GatewayDePagamento
 from rocketicket.entrypoints.entrada import (
-    ler_booleano,
     ler_decimal,
     ler_json,
     ler_texto,
@@ -18,7 +19,7 @@ CAMPOS_TICKET = ("id", "evento_id", "valor_original", "dono_id")
 CAMPOS_ANUNCIO = ("id", "ticket_id", "vendedor_id", "preco")
 CAMPOS_PRECO = ("preco",)
 CAMPOS_PEDIDO = ("id", "ticket_id", "comprador_id")
-CAMPOS_CONFIRMACAO = ("pagamento_aprovado",)
+CAMPOS_CONFIRMACAO = ("token_pagamento",)
 
 def create_app(
     session_factory,
@@ -26,12 +27,18 @@ def create_app(
     ticket_repository_factory: Callable[[Any], repository.AbstractTicketRepository] = (
         repository.SqlAlchemyTicketRepository
     ),
+    gateway_de_pagamento: GatewayDePagamento | None = None,
 ):
     """Compõe a aplicação e permite escolher a persistência de Ticket.
 
     A fábrica recebe a sessão da requisição; o chamador continua responsável
     por confirmar a transação, e o teardown fecha a sessão.
+
+    Sem gateway_de_pagamento, o Pedido é cobrado no gateway externo simulado,
+    através do AdaptadorGatewayExterno.
     """
+    if gateway_de_pagamento is None:
+        gateway_de_pagamento = AdaptadorGatewayExterno(ClienteGatewayExterno())
     orm.start_mappers()
     app = Flask(__name__)
 
@@ -124,12 +131,12 @@ def create_app(
     @app.post("/pedidos/<pedido_id>/confirmacao")
     def confirmar_pedido(pedido_id):
         dados = ler_json(CAMPOS_CONFIRMACAO)
-        aprovado = ler_booleano(dados, "pagamento_aprovado")
-        services.confirmar_pedido(
+        aprovado = services.confirmar_pedido(
             pedido_id,
-            aprovado,
+            ler_texto(dados, "token_pagamento"),
             repository.SqlAlchemyPedidoRepository(g.session),
             ticket_repository_factory(g.session),
+            gateway_de_pagamento,
             g.session,
         )
         return {"id": pedido_id, "pagamento": "aprovado" if aprovado else "recusado"}, 200

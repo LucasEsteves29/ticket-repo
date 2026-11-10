@@ -450,6 +450,16 @@ class Pedido:
         self._exigir_aberto("ter o pagamento alterado")
         self.pagamento.recusar()
 
+    def exigir_cobranca_pendente(self) -> None:
+        """Garante que ainda faz sentido cobrar: pedido ABERTO e pagamento PENDENTE.
+
+        A cobrança acontece fora do sistema, antes de aprovar_pagamento() ou
+        recusar_pagamento(). Sem esta checagem, um pedido já confirmado ou com
+        pagamento já processado seria cobrado de novo antes de o domínio recusar.
+        """
+        self._exigir_aberto("ser cobrado")
+        self.pagamento._exigir_pendente("cobrado")
+
     def confirmar(self, status_ticket: StatusTicket) -> None:
         """Confirma o pedido com o status do ticket no momento da confirmação.
 

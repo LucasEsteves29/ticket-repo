@@ -101,7 +101,7 @@ def test_fluxo_de_compra_usa_fabrica_de_ticket_em_todas_as_rotas(in_memory_db):
             "id": "p1", "ticket_id": "t1", "comprador_id": "u2"
         }).status_code == 201
         resposta = client.post(
-            "/pedidos/p1/confirmacao", json={"pagamento_aprovado": True}
+            "/pedidos/p1/confirmacao", json={"token_pagamento": "tok_aprovado"}
         )
 
         assert resposta.status_code == 200

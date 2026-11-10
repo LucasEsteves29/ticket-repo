@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from rocketicket.adapters.pagamento import GatewayDePagamento
 from rocketicket.adapters.repository import (
     AbstractHistoricoDePrecos,
     AbstractRepository,
@@ -167,17 +168,23 @@ def criar_pedido(
 
 def confirmar_pedido(
     pedido_id: str,
-    pagamento_aprovado: bool,
+    token_pagamento: str,
     repo_pedidos: AbstractRepository[model.Pedido],
     repo_tickets: AbstractRepository[model.Ticket],
+    gateway: GatewayDePagamento,
     session,
-) -> None:
-    """Registra a resposta do pagamento e, se aprovado, confirma o pedido.
+) -> bool:
+    """Cobra o pedido no gateway e, se aprovado, confirma o pedido.
 
-    Pagamento recusado também é salvo: o pedido continua ABERTO, mas não pode
-    mais ser confirmado. Na Fase 1 a disponibilidade do ticket é lida aqui e
-    passada ao Pedido; vender o ticket e concluir a venda fica para os eventos
-    da Fase 2.
+    Devolve True se o pagamento foi aprovado e False se foi recusado. O service
+    só conhece GatewayDePagamento; o fornecedor real fica atrás de um Adapter.
+
+    Antes de cobrar, o Pedido confirma que está ABERTO e com pagamento PENDENTE,
+    para não cobrar de novo um pedido já processado. Pagamento recusado também é
+    salvo: o pedido continua ABERTO, mas não pode mais ser confirmado. Se o
+    gateway falhar (GatewayIndisponivel), nada é salvo e o pagamento continua
+    PENDENTE. Na Fase 1 a disponibilidade do ticket é lida aqui e passada ao
+    Pedido; vender o ticket e concluir a venda fica para os eventos da Fase 2.
     """
     pedido = repo_pedidos.get(pedido_id)
     if pedido is None:
@@ -185,12 +192,15 @@ def confirmar_pedido(
     ticket = repo_tickets.get(pedido.ticket_id)
     if ticket is None:
         raise RecursoNaoEncontrado(f"ticket {pedido.ticket_id} não existe")
-    if pagamento_aprovado:
+    pedido.exigir_cobranca_pendente()
+    aprovado = gateway.cobrar(pedido.id, pedido.pagamento.valor, token_pagamento)
+    if aprovado:
         pedido.aprovar_pagamento()
         pedido.confirmar(ticket.status)
     else:
         pedido.recusar_pagamento()
     session.commit()
+    return aprovado
 
 
 def cancelar_pedido(

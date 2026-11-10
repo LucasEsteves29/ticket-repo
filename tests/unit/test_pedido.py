@@ -158,6 +158,25 @@ class TestConfirmar:
             pedido.confirmar(StatusTicket.ANUNCIADO)
 
 
+class TestExigirCobrancaPendente:
+    def test_pedido_aberto_com_pagamento_pendente_pode_ser_cobrado(self):
+        novo_pedido().exigir_cobranca_pendente()
+
+    def test_pagamento_ja_recusado_nao_pode_ser_cobrado(self):
+        pedido = novo_pedido()
+        pedido.recusar_pagamento()
+        with pytest.raises(PagamentoJaProcessado):
+            pedido.exigir_cobranca_pendente()
+
+    def test_pedido_confirmado_nao_pode_ser_cobrado(self):
+        with pytest.raises(PedidoEncerrado):
+            confirmado().exigir_cobranca_pendente()
+
+    def test_pedido_cancelado_nao_pode_ser_cobrado(self):
+        with pytest.raises(PedidoEncerrado):
+            cancelado().exigir_cobranca_pendente()
+
+
 class TestCancelar:
     def test_cancelar_pedido_aberto(self):
         assert cancelado().status is StatusPedido.CANCELADO

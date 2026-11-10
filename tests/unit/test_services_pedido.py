@@ -2,12 +2,19 @@ from decimal import Decimal
 
 import pytest
 
+from conftest import FakeGatewayDePagamento
+from rocketicket.adapters.pagamento import GatewayIndisponivel
 from rocketicket.domain import model
 from rocketicket.domain.model import StatusPagamento, StatusPedido, Ticket, Venda
 from rocketicket.service_layer import services
 
 VALOR_ORIGINAL = Decimal("100.00")
 PRECO_ANUNCIO = Decimal("105.00")
+TOKEN = "tok_qualquer"
+
+
+def gateway(aprovar):
+    return FakeGatewayDePagamento(aprovar=aprovar)
 
 
 def novo_anuncio():
@@ -100,20 +107,37 @@ class TestCriarPedido:
 
 
 class TestConfirmarPedido:
+    def confirmar(self, repo_pedidos, repo_tickets, gateway, session):
+        return services.confirmar_pedido(
+            "p1", TOKEN, repo_pedidos, repo_tickets, gateway, session
+        )
+
     def test_pagamento_aprovado_confirma_o_pedido(
         self, fake_pedido_repository, fake_ticket_repository, fake_session
     ):
         fake_pedido_repository.add(novo_pedido())
         fake_ticket_repository.add(ticket_anunciado())
 
-        services.confirmar_pedido(
-            "p1", True, fake_pedido_repository, fake_ticket_repository, fake_session
+        aprovado = self.confirmar(
+            fake_pedido_repository, fake_ticket_repository, gateway(True), fake_session
         )
 
         pedido = fake_pedido_repository.get("p1")
+        assert aprovado is True
         assert pedido.status is StatusPedido.CONFIRMADO
         assert pedido.pagamento.status is StatusPagamento.APROVADO
         assert fake_session.committed is True
+
+    def test_cobra_o_valor_do_pedido_com_o_token_recebido(
+        self, fake_pedido_repository, fake_ticket_repository, fake_session
+    ):
+        fake_pedido_repository.add(novo_pedido())
+        fake_ticket_repository.add(ticket_anunciado())
+        gw = gateway(True)
+
+        self.confirmar(fake_pedido_repository, fake_ticket_repository, gw, fake_session)
+
+        assert gw.cobrancas == [("p1", PRECO_ANUNCIO, TOKEN)]
 
     def test_pagamento_recusado_e_salvo_e_pedido_fica_aberto(
         self, fake_pedido_repository, fake_ticket_repository, fake_session
@@ -121,30 +145,50 @@ class TestConfirmarPedido:
         fake_pedido_repository.add(novo_pedido())
         fake_ticket_repository.add(ticket_anunciado())
 
-        services.confirmar_pedido(
-            "p1", False, fake_pedido_repository, fake_ticket_repository, fake_session
+        aprovado = self.confirmar(
+            fake_pedido_repository, fake_ticket_repository, gateway(False), fake_session
         )
 
         pedido = fake_pedido_repository.get("p1")
+        assert aprovado is False
         assert pedido.status is StatusPedido.ABERTO
         assert pedido.pagamento.status is StatusPagamento.RECUSADO
         assert fake_session.committed is True
 
-    def test_pagamento_recusado_nao_pode_ser_aprovado_depois(
+    def test_pagamento_recusado_nao_e_cobrado_de_novo(
         self, fake_pedido_repository, fake_ticket_repository, fake_session
     ):
         fake_pedido_repository.add(novo_pedido())
         fake_ticket_repository.add(ticket_anunciado())
-        services.confirmar_pedido(
-            "p1", False, fake_pedido_repository, fake_ticket_repository, fake_session
+        self.confirmar(
+            fake_pedido_repository, fake_ticket_repository, gateway(False), fake_session
         )
+        gw = gateway(True)
 
         with pytest.raises(model.PagamentoJaProcessado):
-            services.confirmar_pedido(
-                "p1", True, fake_pedido_repository, fake_ticket_repository, fake_session
+            self.confirmar(fake_pedido_repository, fake_ticket_repository, gw, fake_session)
+
+        assert gw.cobrancas == []
+        assert fake_pedido_repository.get("p1").status is StatusPedido.ABERTO
+
+    def test_gateway_indisponivel_nao_salva_nada(
+        self, fake_pedido_repository, fake_ticket_repository, fake_session
+    ):
+        fake_pedido_repository.add(novo_pedido())
+        fake_ticket_repository.add(ticket_anunciado())
+
+        with pytest.raises(GatewayIndisponivel):
+            self.confirmar(
+                fake_pedido_repository,
+                fake_ticket_repository,
+                FakeGatewayDePagamento(falhar=True),
+                fake_session,
             )
 
-        assert fake_pedido_repository.get("p1").status is StatusPedido.ABERTO
+        pedido = fake_pedido_repository.get("p1")
+        assert pedido.status is StatusPedido.ABERTO
+        assert pedido.pagamento.status is StatusPagamento.PENDENTE
+        assert fake_session.committed is False
 
     def test_ticket_nao_anunciado_lanca_ticket_indisponivel(
         self, fake_pedido_repository, fake_ticket_repository, fake_session
@@ -155,8 +199,8 @@ class TestConfirmarPedido:
         fake_ticket_repository.add(ticket)
 
         with pytest.raises(model.TicketIndisponivel):
-            services.confirmar_pedido(
-                "p1", True, fake_pedido_repository, fake_ticket_repository, fake_session
+            self.confirmar(
+                fake_pedido_repository, fake_ticket_repository, gateway(True), fake_session
             )
 
         assert fake_pedido_repository.get("p1").status is StatusPedido.ABERTO
@@ -172,8 +216,8 @@ class TestConfirmarPedido:
         fake_ticket_repository.add(ticket)
 
         with pytest.raises(model.TicketIndisponivel):
-            services.confirmar_pedido(
-                "p1", True, fake_pedido_repository, fake_ticket_repository, fake_session
+            self.confirmar(
+                fake_pedido_repository, fake_ticket_repository, gateway(True), fake_session
             )
 
         assert fake_session.committed is False
@@ -182,53 +226,54 @@ class TestConfirmarPedido:
         self, fake_pedido_repository, fake_ticket_repository, fake_session
     ):
         fake_ticket_repository.add(ticket_anunciado())
+        gw = gateway(True)
 
         with pytest.raises(services.RecursoNaoEncontrado):
-            services.confirmar_pedido(
-                "p1", True, fake_pedido_repository, fake_ticket_repository, fake_session
-            )
+            self.confirmar(fake_pedido_repository, fake_ticket_repository, gw, fake_session)
 
+        assert gw.cobrancas == []
         assert fake_session.committed is False
 
     def test_ticket_inexistente_lanca_recurso_nao_encontrado(
         self, fake_pedido_repository, fake_ticket_repository, fake_session
     ):
         fake_pedido_repository.add(novo_pedido())
+        gw = gateway(True)
 
         with pytest.raises(services.RecursoNaoEncontrado):
-            services.confirmar_pedido(
-                "p1", True, fake_pedido_repository, fake_ticket_repository, fake_session
-            )
+            self.confirmar(fake_pedido_repository, fake_ticket_repository, gw, fake_session)
 
+        assert gw.cobrancas == []
         assert fake_session.committed is False
 
-    def test_pedido_ja_confirmado_nao_pode_ser_confirmado_de_novo(
+    def test_pedido_ja_confirmado_nao_e_cobrado_de_novo(
         self, fake_pedido_repository, fake_ticket_repository, fake_session
     ):
         fake_pedido_repository.add(novo_pedido())
         fake_ticket_repository.add(ticket_anunciado())
-        services.confirmar_pedido(
-            "p1", True, fake_pedido_repository, fake_ticket_repository, fake_session
+        self.confirmar(
+            fake_pedido_repository, fake_ticket_repository, gateway(True), fake_session
         )
+        gw = gateway(True)
 
         with pytest.raises(model.PedidoEncerrado):
-            services.confirmar_pedido(
-                "p1", True, fake_pedido_repository, fake_ticket_repository, fake_session
-            )
+            self.confirmar(fake_pedido_repository, fake_ticket_repository, gw, fake_session)
 
-    def test_pedido_cancelado_nao_pode_ser_confirmado(
+        assert gw.cobrancas == []
+
+    def test_pedido_cancelado_nao_e_cobrado(
         self, fake_pedido_repository, fake_ticket_repository, fake_session
     ):
         pedido = novo_pedido()
         pedido.cancelar()
         fake_pedido_repository.add(pedido)
         fake_ticket_repository.add(ticket_anunciado())
+        gw = gateway(True)
 
         with pytest.raises(model.PedidoEncerrado):
-            services.confirmar_pedido(
-                "p1", True, fake_pedido_repository, fake_ticket_repository, fake_session
-            )
+            self.confirmar(fake_pedido_repository, fake_ticket_repository, gw, fake_session)
 
+        assert gw.cobrancas == []
         assert fake_session.committed is False
 
 

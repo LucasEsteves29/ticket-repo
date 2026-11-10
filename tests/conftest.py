@@ -1,4 +1,5 @@
 import pytest
+from rocketicket.adapters.pagamento import GatewayDePagamento, GatewayIndisponivel
 from rocketicket.adapters.repository import (
     AbstractRepository,
     AbstractTicketRepository,
@@ -143,3 +144,23 @@ class FakePedidoRepository(AbstractRepository[model.Pedido]):
 @pytest.fixture
 def fake_pedido_repository():
     return FakePedidoRepository()
+
+
+class FakeGatewayDePagamento(GatewayDePagamento):
+    """Gateway em memória: aprova, recusa ou falha conforme configurado, e anota as cobranças."""
+
+    def __init__(self, aprovar=True, falhar=False):
+        self.aprovar = aprovar
+        self.falhar = falhar
+        self.cobrancas = []
+
+    def cobrar(self, pedido_id, valor, token_pagamento):
+        self.cobrancas.append((pedido_id, valor, token_pagamento))
+        if self.falhar:
+            raise GatewayIndisponivel("gateway fora do ar")
+        return self.aprovar
+
+
+@pytest.fixture
+def fake_gateway():
+    return FakeGatewayDePagamento()
