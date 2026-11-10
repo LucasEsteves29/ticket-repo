@@ -16,6 +16,7 @@ from rocketicket.service_layer import services
 
 CAMPOS_TICKET = ("id", "evento_id", "valor_original", "dono_id")
 CAMPOS_ANUNCIO = ("id", "ticket_id", "vendedor_id", "preco")
+CAMPOS_PRECO = ("preco",)
 CAMPOS_PEDIDO = ("id", "ticket_id", "comprador_id")
 CAMPOS_CONFIRMACAO = ("pagamento_aprovado",)
 
@@ -73,6 +74,29 @@ def create_app(
             g.session,
         )
         return {"id": venda_id}, 201
+
+    @app.put("/anuncios/<venda_id>/preco")
+    def alterar_preco(venda_id):
+        dados = ler_json(CAMPOS_PRECO)
+        novo_preco = ler_decimal(dados, "preco")
+        services.alterar_preco(
+            venda_id,
+            novo_preco,
+            repository.SqlAlchemyVendaRepository(g.session),
+            repository.SqlAlchemyHistoricoDePrecos(g.session),
+            g.session,
+        )
+        return {"id": venda_id, "preco": str(novo_preco)}, 200
+
+    @app.post("/anuncios/<venda_id>/preco/desfazimento")
+    def desfazer_alteracao_de_preco(venda_id):
+        preco = services.desfazer_alteracao_de_preco(
+            venda_id,
+            repository.SqlAlchemyVendaRepository(g.session),
+            repository.SqlAlchemyHistoricoDePrecos(g.session),
+            g.session,
+        )
+        return {"id": venda_id, "preco": str(preco)}, 200
 
     # endpoints de Pedido: Guilherme
     @app.post("/pedidos")

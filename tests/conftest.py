@@ -2,6 +2,7 @@ import pytest
 from rocketicket.adapters.repository import (
     AbstractRepository,
     AbstractVendaRepository,
+    AbstractHistoricoDePrecos,
 )
 from rocketicket.domain import model
 
@@ -100,6 +101,29 @@ class FakeVendaRepository(AbstractVendaRepository):
 @pytest.fixture
 def fake_venda_repository():
     return FakeVendaRepository()
+
+class FakeHistoricoDePrecos(AbstractHistoricoDePrecos):
+    """Caretaker em memória: uma lista, do memento mais antigo ao mais novo."""
+
+    def __init__(self, mementos=None):
+        self._mementos = list(mementos or [])
+
+    def guardar(self, memento: model.MementoPrecoVenda) -> None:
+        self._mementos.append(memento)
+
+    def ultimo(self, venda_id: str) -> model.MementoPrecoVenda | None:
+        return next(
+            (m for m in reversed(self._mementos) if m.venda_id == venda_id),
+            None,
+        )
+
+    def descartar(self, memento: model.MementoPrecoVenda) -> None:
+        self._mementos.remove(memento)
+
+
+@pytest.fixture
+def fake_historico_de_precos():
+    return FakeHistoricoDePrecos()
 
 
 class FakePedidoRepository(AbstractRepository[model.Pedido]):

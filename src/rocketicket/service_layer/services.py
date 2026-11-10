@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from rocketicket.adapters.repository import AbstractRepository, ConsultaVendaAtiva
+from rocketicket.adapters.repository import AbstractHistoricoDePrecos, AbstractRepository, ConsultaVendaAtiva
 from rocketicket.domain import model
 
 
@@ -21,6 +21,9 @@ class VendaJaExiste(ErroDeServico):
 
 class PedidoJaExiste(ErroDeServico):
     pass
+
+class SemAlteracaoDePreco(ErroDeServico):
+    """Pedido para desfazer o preço de um anúncio sem alteração guardada."""
 
 def emitir_ticket(
     id: str,
@@ -72,6 +75,54 @@ def criar_anuncio(
     repo_vendas.add(venda)
     session.commit()
     return venda.id
+
+# alterar_preco e desfazer_alteracao_de_preco (padrão Memento): Igor
+
+
+def alterar_preco(
+    venda_id: str,
+    novo_preco: Decimal,
+    repo_vendas: AbstractRepository[model.Venda],
+    historico: AbstractHistoricoDePrecos,
+    session,
+) -> None:
+    """Troca o preço do anúncio e guarda o preço anterior para poder desfazer.
+
+    O memento é criado antes da troca e só é guardado se a troca passar: um
+    preço recusado pelo domínio não deixa nada para desfazer.
+    """
+    venda = repo_vendas.get(venda_id)
+    if venda is None:
+        raise RecursoNaoEncontrado(f"venda {venda_id} não existe")
+    memento = venda.salvar_preco()
+    venda.alterar_preco(novo_preco)
+    historico.guardar(memento)
+    session.commit()
+
+
+def desfazer_alteracao_de_preco(
+    venda_id: str,
+    repo_vendas: AbstractRepository[model.Venda],
+    historico: AbstractHistoricoDePrecos,
+    session,
+) -> Decimal:
+    """Volta o anúncio ao preço anterior à última alteração e devolve o preço.
+
+    O memento só sai do histórico depois que a Venda aceita a restauração. Se
+    ela recusar (venda encerrada, por exemplo), nada muda e nada é salvo.
+    """
+    venda = repo_vendas.get(venda_id)
+    if venda is None:
+        raise RecursoNaoEncontrado(f"venda {venda_id} não existe")
+    memento = historico.ultimo(venda_id)
+    if memento is None:
+        raise SemAlteracaoDePreco(
+            f"venda {venda_id} não tem alteração de preço para desfazer"
+        )
+    venda.restaurar_preco(memento)
+    historico.descartar(memento)
+    session.commit()
+    return venda.preco
 
 
 # alterar_preco e cancelar_anuncio: Miguel
