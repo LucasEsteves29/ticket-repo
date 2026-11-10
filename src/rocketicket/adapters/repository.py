@@ -169,7 +169,52 @@ class SqlAlchemyVendaRepository(AbstractVendaRepository):
             .filter_by(ticket_id=ticket_id, status=model.StatusVenda.ATIVA)
             .first()
         )
+# Histórico de preços da Venda (caretaker do Memento) — Igor
 
+
+class AbstractHistoricoDePrecos(abc.ABC):
+    """Caretaker do padrão Memento: guarda os MementoPrecoVenda de cada anúncio.
+
+    Só usa a interface estreita do memento (venda_id) e nunca lê o preço guardado:
+    quem abre o memento é a Venda, em restaurar_preco(). Como os repositórios, não
+    faz commit.
+    """
+
+    @abc.abstractmethod
+    def guardar(self, memento: model.MementoPrecoVenda) -> None:
+        """Empilha o memento no histórico do anúncio dele."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def ultimo(self, venda_id: str) -> model.MementoPrecoVenda | None:
+        """Devolve o memento mais recente do anúncio, sem tirá-lo do histórico."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def descartar(self, memento: model.MementoPrecoVenda) -> None:
+        """Tira do histórico um memento que já foi usado."""
+        raise NotImplementedError
+
+
+class SqlAlchemyHistoricoDePrecos(AbstractHistoricoDePrecos):
+    """Histórico de preços na tabela historico_precos. Não faz commit."""
+
+    def __init__(self, session):
+        self.session = session
+
+    def guardar(self, memento: model.MementoPrecoVenda) -> None:
+        self.session.add(memento)
+
+    def ultimo(self, venda_id: str) -> model.MementoPrecoVenda | None:
+        return (
+            self.session.query(model.MementoPrecoVenda)
+            .filter_by(_venda_id=venda_id)
+            .order_by(model.MementoPrecoVenda._id.desc())
+            .first()
+        )
+
+    def descartar(self, memento: model.MementoPrecoVenda) -> None:
+        self.session.delete(memento)
 
 # Pedido — Guilherme
 

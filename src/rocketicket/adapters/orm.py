@@ -9,7 +9,9 @@ dinheiro é Numeric(10, 2) (nunca Float) e não há FK entre agregados (FK
 dentro do mesmo agregado, como pagamentos -> pedidos, é permitida).
 """
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, MetaData, Numeric, String, Table
+from sqlalchemy import (
+    Column, DateTime, Enum, ForeignKey, Integer, MetaData, Numeric, String, Table,
+)
 from sqlalchemy.orm import registry, relationship
 
 from rocketicket.domain import model
@@ -75,6 +77,31 @@ vendas = Table(
 def _mapear_venda() -> None:
     mapper_registry.map_imperatively(model.Venda, vendas)
 
+# Histórico de preços (Memento) — Igor
+#
+# Cada linha é um MementoPrecoVenda guardado pelo caretaker. O id é só a ordem de
+# chegada (para desfazer do mais novo para o mais antigo) e não existe no domínio.
+# Sem FK para vendas: o memento é guardado fora do agregado Venda.
+
+historico_precos = Table(
+    "historico_precos",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("venda_id", String(255), nullable=False, index=True),
+    Column("preco", Numeric(10, 2), nullable=False),
+)
+def _mapear_historico_precos() -> None:
+    # Os atributos do memento começam com "_" (interface larga), então cada
+    # coluna é ligada explicitamente ao atributo correspondente.
+    mapper_registry.map_imperatively(
+        model.MementoPrecoVenda,
+        historico_precos,
+        properties={
+            "_id": historico_precos.c.id,
+            "_venda_id": historico_precos.c.venda_id,
+            "_preco": historico_precos.c.preco,
+        },
+    )
 # Pedido — Guilherme
 #
 # O Pagamento não tem id no domínio: ele é do Pedido e só existe dentro dele.
@@ -123,4 +150,5 @@ def start_mappers() -> None:
     """
     _mapear_ticket()
     _mapear_venda()
+    _mapear_historico_precos()
     _mapear_pedido()

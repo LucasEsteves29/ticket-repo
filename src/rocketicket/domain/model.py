@@ -46,6 +46,91 @@ class CompraDoProprioTicket(ErroDeDominio):
     """Tentativa de vender um ticket para quem já é o dono dele."""
 
 
+class EstadoTicket:
+    """Padrão State: o que cada método do Ticket faz em um dado status.
+
+    Cada método aqui é o comportamento padrão, e cada subclasse sobrescreve só o
+    que muda no seu status. Os estados não guardam nada: recebem o ticket, e a
+    mesma instância serve para todos os tickets (ver _ESTADOS).
+    """
+
+    def anunciar(self, ticket: "Ticket") -> None:
+        ticket.status = StatusTicket.ANUNCIADO
+
+    def retirar_anuncio(self, ticket: "Ticket") -> None:
+        raise self._nao_anunciado(ticket)
+
+    def vender(self, ticket: "Ticket", novo_dono_id: str) -> None:
+        raise self._nao_anunciado(ticket)
+
+    def usar(self, ticket: "Ticket") -> None:
+        raise TicketNaoVendido(
+            f"ticket {ticket.id} não foi vendido (status: {ticket.status.value})"
+        )
+
+    def _nao_anunciado(self, ticket: "Ticket") -> TicketNaoAnunciado:
+        return TicketNaoAnunciado(
+            f"ticket {ticket.id} não está anunciado (status: {ticket.status.value})"
+        )
+
+
+class Disponivel(EstadoTicket):
+    """Status sem regra própria: vale o comportamento padrão de EstadoTicket."""
+
+
+class Anunciado(EstadoTicket):
+    def anunciar(self, ticket: "Ticket") -> None:
+        raise TicketJaAnunciado(f"ticket {ticket.id} já está anunciado")
+
+    def retirar_anuncio(self, ticket: "Ticket") -> None:
+        ticket.status = StatusTicket.VENDIDO
+
+    def vender(self, ticket: "Ticket", novo_dono_id: str) -> None:
+        if novo_dono_id == ticket.dono_id:
+            raise CompraDoProprioTicket(
+                f"usuário {novo_dono_id} já é o dono do ticket {ticket.id}"
+            )
+        ticket.dono_id = novo_dono_id
+        ticket.status = StatusTicket.VENDIDO
+
+    def usar(self, ticket: "Ticket") -> None:
+        raise TicketAnunciado(f"ticket {ticket.id} está anunciado e não pode ser usado")
+
+
+class Vendido(EstadoTicket):
+    def usar(self, ticket: "Ticket") -> None:
+        ticket.status = StatusTicket.USADO
+
+
+class Usado(EstadoTicket):
+    """Estado final: toda operação é recusada."""
+
+    def anunciar(self, ticket: "Ticket") -> None:
+        raise TicketJaUsado(f"ticket {ticket.id} já foi usado e não pode ser anunciado")
+
+    def retirar_anuncio(self, ticket: "Ticket") -> None:
+        raise TicketJaUsado(
+            f"ticket {ticket.id} já foi usado e não pode ter o anúncio retirado."
+        )
+
+    def vender(self, ticket: "Ticket", novo_dono_id: str) -> None:
+        raise TicketJaUsado(f"ticket {ticket.id} já foi usado e não pode ser vendido")
+
+    def usar(self, ticket: "Ticket") -> None:
+        raise TicketJaUsado(f"ticket {ticket.id} já foi usado")
+
+
+# status é a única fonte de verdade: é a coluna persistida, e a leitura do banco
+# não chama __init__. Um objeto de estado guardado na instância não existiria nos
+# tickets carregados, por isso o estado é sempre obtido a partir do status.
+_ESTADOS: dict[StatusTicket, EstadoTicket] = {
+    StatusTicket.DISPONIVEL: Disponivel(),
+    StatusTicket.ANUNCIADO: Anunciado(),
+    StatusTicket.VENDIDO: Vendido(),
+    StatusTicket.USADO: Usado(),
+}
+
+
 class Ticket:
     """Raiz do agregado Ticket.
 
@@ -58,6 +143,8 @@ class Ticket:
 
     Dali em diante ele alterna entre ANUNCIADO e VENDIDO a cada revenda, até
     ser USADO — estado final, que bloqueia anunciar e vender.
+
+    O que cada método faz em cada status está nas subclasses de EstadoTicket.
     """
 
     def __init__(
@@ -73,19 +160,18 @@ class Ticket:
         self.dono_id = dono_id
         self.status = StatusTicket.VENDIDO
 
+    @property
+    def _estado(self) -> EstadoTicket:
+        return _ESTADOS[self.status]
+
     def anunciar(self) -> None:
         """Coloca o ticket em um anúncio ativo.
 
         A regra "um ticket não pode estar em mais de um anúncio ativo" vive
-        aqui, e não na Venda, porque a raiz Venda só enxerga a si mesma.
+        no agregado Ticket, e não na Venda, porque a raiz Venda só enxerga a si
+        mesma.
         """
-        if self.status is StatusTicket.USADO:
-            raise TicketJaUsado(
-                f"ticket {self.id} já foi usado e não pode ser anunciado"
-            )
-        if self.status is StatusTicket.ANUNCIADO:
-            raise TicketJaAnunciado(f"ticket {self.id} já está anunciado")
-        self.status = StatusTicket.ANUNCIADO
+        self._estado.anunciar(self)
 
     def vender(self, novo_dono_id: str) -> None:
         """Conclui a venda do ticket, transferindo a posse ao comprador.
@@ -94,18 +180,7 @@ class Ticket:
         muda nada de fato, mas queimaria o anúncio e a venda como se fosse
         uma transação real.
         """
-        if self.status is StatusTicket.USADO:
-            raise TicketJaUsado(f"ticket {self.id} já foi usado e não pode ser vendido")
-        if self.status is not StatusTicket.ANUNCIADO:
-            raise TicketNaoAnunciado(
-                f"ticket {self.id} não está anunciado (status: {self.status.value})"
-            )
-        if novo_dono_id == self.dono_id:
-            raise CompraDoProprioTicket(
-                f"usuário {novo_dono_id} já é o dono do ticket {self.id}"
-            )
-        self.dono_id = novo_dono_id
-        self.status = StatusTicket.VENDIDO
+        self._estado.vender(self, novo_dono_id)
 
     def usar(self) -> None:
         """Faz o check-in do ticket, seu estado final.
@@ -114,17 +189,7 @@ class Ticket:
         vez usado, não pode ser usado de novo nem revendido/anunciado — ver
         anunciar() e vender().
         """
-        if self.status is StatusTicket.USADO:
-            raise TicketJaUsado(f"ticket {self.id} já foi usado")
-        if self.status is StatusTicket.ANUNCIADO:
-            raise TicketAnunciado(
-                f"ticket {self.id} está anunciado e não pode ser usado"
-            )
-        if self.status is not StatusTicket.VENDIDO:
-            raise TicketNaoVendido(
-                f"ticket {self.id} não foi vendido (status: {self.status.value})"
-            )
-        self.status = StatusTicket.USADO
+        self._estado.usar(self)
 
     def retirar_anuncio(self) -> None:
         """Retira o ticket de um anúncio ativo, revertendo para VENDIDO.
@@ -132,15 +197,7 @@ class Ticket:
         É o inverso de anunciar(): o dono desiste de revender sem que uma
         venda tenha ocorrido, então não há transferência de posse aqui.
         """
-        if self.status is StatusTicket.USADO:
-            raise TicketJaUsado(
-                f"ticket {self.id} já foi usado e não pode ter o anúncio retirado."
-            )
-        if self.status is not StatusTicket.ANUNCIADO:
-            raise TicketNaoAnunciado(
-                f"ticket {self.id} não está anunciado (status: {self.status.value})"
-            )
-        self.status = StatusTicket.VENDIDO
+        self._estado.retirar_anuncio(self)
 
     def __repr__(self) -> str:
         return f"<Ticket {self.id} {self.status.value}>"
@@ -162,6 +219,24 @@ class PrecoAcimaDoLimite(ErroDeDominio):
     """Tentativa de criar anúncio ou alterar preço acima de 110% do valor original."""
 class VendaEncerrada(ErroDeDominio):
     """Tentativa de alterar, cancelar ou concluir uma venda já cancelada ou concluída."""
+class MementoDeOutraVenda(ErroDeDominio):
+    """Tentativa de restaurar o preço de uma venda com o memento de outra venda."""
+class MementoPrecoVenda:
+    """Padrão Memento: o preço de uma Venda em um momento, guardado fora dela.
+
+    Interface estreita (pública): só venda_id, para quem guarda o memento saber de
+    qual anúncio ele é. Interface larga: _preco, lido só por Venda.restaurar_preco().
+    Python não tem o friend do C++, então a fronteira é a convenção do sublinhado.
+    O memento é passivo: só a Venda que o criou atribui ou lê o preço.
+    """
+    def __init__(self, venda_id: str, preco: Decimal):
+        self._venda_id = venda_id
+        self._preco = preco
+    @property
+    def venda_id(self) -> str:
+        return self._venda_id
+    def __repr__(self) -> str:
+        return f"<MementoPrecoVenda da venda {self._venda_id}>"
 class PoliticaTetoPercentual:
     """Responsável pelo cálculo e validação do teto de preço de revenda.
     Separa a regra financeira anti-cambismo (fator percentual e truncamento em
@@ -215,6 +290,22 @@ class Venda:
         self._exigir_ativa("ter o preço alterado")
         self._validar_preco(novo_preco)
         self.preco = novo_preco
+    def salvar_preco(self) -> MementoPrecoVenda:
+        """Memento (CreateMemento): fotografa o preço atual do anúncio."""
+        return MementoPrecoVenda(self.id, self.preco)
+    def restaurar_preco(self, memento: MementoPrecoVenda) -> None:
+        """Memento (SetMemento): volta o preço ao que estava guardado no memento.
+
+        Segue as mesmas regras de alterar_preco(): venda encerrada não muda de
+        preço e o preço restaurado precisa respeitar a política de teto atual.
+        """
+        self._exigir_ativa("ter o preço restaurado")
+        if memento.venda_id != self.id:
+            raise MementoDeOutraVenda(
+                f"o preço guardado é da venda {memento.venda_id}, não da venda {self.id}"
+            )
+        self._validar_preco(memento._preco)
+        self.preco = memento._preco
     def cancelar(self) -> None:
         """Encerra o anúncio sem venda. CANCELADA é estado final."""
         self._exigir_ativa("ser cancelada")
