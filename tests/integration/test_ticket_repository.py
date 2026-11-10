@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+import pytest
+
 from rocketicket.adapters.repository import SqlAlchemyTicketRepository
 from rocketicket.domain import model
 
@@ -73,3 +75,50 @@ def test_fake_repository_aceita_tickets_iniciais():
     repo = FakeTicketRepository([ticket])
 
     assert repo.get("ticket-inicial") is ticket
+
+
+def test_checkin_e_auditoria_persistem_juntos(session):
+    from sqlalchemy import select
+
+    from rocketicket.adapters.audit import SqlAlchemyCheckInAudit
+    from rocketicket.adapters.orm import checkins
+    from rocketicket.adapters.repository import AuditedTicketRepository
+    from rocketicket.service_layer.services import usar_ticket
+
+    base = SqlAlchemyTicketRepository(session)
+    base.add(novo_ticket("ticket-1"))
+    session.commit()
+    repo = AuditedTicketRepository(base, SqlAlchemyCheckInAudit(session))
+
+    usar_ticket("ticket-1", repo, session)
+    session.expunge_all()
+
+    assert base.get("ticket-1").status is model.StatusTicket.USADO
+    registro = session.execute(select(checkins)).one()
+    assert registro.ticket_id == "ticket-1"
+    assert registro.dono_id == "usuario-1"
+    assert registro.ocorrido_em is not None
+    with pytest.raises(model.TicketJaUsado):
+        usar_ticket("ticket-1", repo, session)
+    assert len(session.execute(select(checkins)).all()) == 1
+
+
+def test_rollback_desfaz_checkin_e_auditoria(session):
+    from sqlalchemy import select
+
+    from rocketicket.adapters.audit import SqlAlchemyCheckInAudit
+    from rocketicket.adapters.orm import checkins
+    from rocketicket.adapters.repository import AuditedTicketRepository
+
+    base = SqlAlchemyTicketRepository(session)
+    base.add(novo_ticket("ticket-1"))
+    session.commit()
+    repo = AuditedTicketRepository(base, SqlAlchemyCheckInAudit(session))
+
+    repo.usar("ticket-1")
+    session.flush()
+    session.rollback()
+    session.expunge_all()
+
+    assert base.get("ticket-1").status is model.StatusTicket.VENDIDO
+    assert session.execute(select(checkins)).all() == []

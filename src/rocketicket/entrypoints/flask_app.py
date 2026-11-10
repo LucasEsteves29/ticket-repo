@@ -4,7 +4,7 @@ from typing import Any
 from flask import Flask, g
 
 from rocketicket.adapters import orm, repository
-from rocketicket.domain.model import Ticket
+from rocketicket.adapters.audit import SqlAlchemyCheckInAudit
 from rocketicket.entrypoints.entrada import (
     ler_booleano,
     ler_decimal,
@@ -22,7 +22,7 @@ CAMPOS_CONFIRMACAO = ("pagamento_aprovado",)
 def create_app(
     session_factory,
     *,
-    ticket_repository_factory: Callable[[Any], repository.AbstractRepository[Ticket]] = (
+    ticket_repository_factory: Callable[[Any], repository.AbstractTicketRepository] = (
         repository.SqlAlchemyTicketRepository
     ),
 ):
@@ -58,6 +58,15 @@ def create_app(
             g.session,
         )
         return {"id": ticket_id}, 201
+
+    @app.post("/tickets/<ticket_id>/check-in")
+    def usar_ticket(ticket_id):
+        repo = repository.AuditedTicketRepository(
+            ticket_repository_factory(g.session),
+            SqlAlchemyCheckInAudit(g.session),
+        )
+        services.usar_ticket(ticket_id, repo, g.session)
+        return {"id": ticket_id, "status": "usado"}, 200
 
     # endpoints de Venda: Igor
     @app.post("/anuncios")

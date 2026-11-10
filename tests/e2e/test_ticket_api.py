@@ -49,6 +49,36 @@ class TestPostTickets:
         assert resposta.status_code == 400
         assert "erro" in resposta.get_json()
 
+class TestCheckIn:
+    def test_checkin_e_repeticao(self, client):
+        client.post("/tickets", json=dados_ticket())
+
+        resposta = client.post("/tickets/t1/check-in")
+
+        assert resposta.status_code == 200
+        assert resposta.get_json() == {"id": "t1", "status": "usado"}
+        repeticao = client.post("/tickets/t1/check-in")
+        assert repeticao.status_code == 400
+        assert repeticao.get_json() == {"erro": "ticket t1 já foi usado"}
+
+    def test_checkin_ausente(self, client):
+        resposta = client.post("/tickets/ausente/check-in")
+
+        assert resposta.status_code == 404
+        assert resposta.get_json() == {"erro": "ticket ausente não existe"}
+
+    def test_ticket_anunciado_nao_aceita_checkin(self, client):
+        client.post("/tickets", json=dados_ticket())
+        client.post("/anuncios", json={
+            "id": "v1", "ticket_id": "t1", "vendedor_id": "u1", "preco": "100.00",
+        })
+
+        resposta = client.post("/tickets/t1/check-in")
+
+        assert resposta.status_code == 400
+        assert "está anunciado" in resposta.get_json()["erro"]
+
+
 class TestErrosCentrais:
     def test_recurso_nao_encontrado_devolve_404(self, client):
         from rocketicket.service_layer import services

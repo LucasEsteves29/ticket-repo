@@ -9,7 +9,7 @@ dinheiro é Numeric(10, 2) (nunca Float) e não há FK entre agregados (FK
 dentro do mesmo agregado, como pagamentos -> pedidos, é permitida).
 """
 
-from sqlalchemy import Column, Enum, ForeignKey, MetaData, Numeric, String, Table
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, MetaData, Numeric, String, Table
 from sqlalchemy.orm import registry, relationship
 
 from rocketicket.domain import model
@@ -44,6 +44,15 @@ tickets = Table(
     Column("valor_original", Numeric(10, 2), nullable=False),
     Column("dono_id", String(255), nullable=False),
     Column("status", _enum_por_valor(model.StatusTicket), nullable=False),
+)
+
+
+checkins = Table(
+    "checkins",
+    metadata,
+    Column("ticket_id", String(255), primary_key=True),
+    Column("dono_id", String(255), nullable=False),
+    Column("ocorrido_em", DateTime(timezone=True), nullable=False),
 )
 
 
