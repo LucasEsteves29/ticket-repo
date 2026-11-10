@@ -299,56 +299,253 @@ Responsável: Caio
 O enunciado exige: o custo de introduzir o padrão.
 -->
 
-## Igor — a definir
+## Igor — Memento
 
 ### Nome e categoria
 
-<!--
-Responsável: Igor
-O enunciado exige: o nome do padrão e a sua categoria no GoF.
--->
+**Memento**, padrão comportamental do GoF. A intenção, nos
+termos do catálogo, é capturar e externalizar um estado interno de um objeto sem violar o
+encapsulamento, para que o objeto possa ser restaurado para esse estado mais tarde. No
+Rocketicket, o objeto (*Originator*) é a `Venda`, e o estado interno capturado é o `preco`
+do anúncio.
 
 ### Contexto e problema
 
-<!--
-Responsável: Igor
-O enunciado exige: o contexto e o problema real do domínio que o padrão resolve.
--->
+Uma Venda ativa permite que o vendedor reajuste o preço anunciado dentro do limite anti-cambismo
+(`PoliticaTetoPercentual`, teto padrão de 110% sobre `valor_original` truncado em centavos com
+`ROUND_DOWN`). Até `a4f0292`, o commit anterior a `7435b36`, alterar_preco() apenas validava o
+novo valor e sobrescrevia `self.preco`.
+
+```python
+def alterar_preco(self, novo_preco: Decimal) -> None:
+    self._exigir_ativa("ter o preço alterado")
+    self._validar_preco(novo_preco)
+    self.preco = novo_preco
+```
+
+Quando o vendedor errava a digitação ou desistia de uma promoção relâmpago — por exemplo, baixava
+um ingresso de `R$ 108,00` para `R$ 95,00` e depois para `R$ 80,00` —, os valores anteriores se
+perdiam. Para permitir desfazer alterações sucessivas em ordem LIFO (*Last-In, First-Out*), o
+sistema precisa guardar os preços anteriores e restaurá-los mais tarde, respeitando três restrições
+do domínio:
+
+1. **Encapsulamento do histórico fora da `Venda`**: a `Venda` governa o ciclo de vida do anúncio
+   (`ATIVA`, `CANCELADA`, `CONCLUIDA`) e a validação do teto de revenda; ela não deve gerenciar
+   pilha de desfazer nem expor detalhes de armazenamento de snapshots para os clientes.
+2. **Preservação das invariantes na restauração**: restaurar um preço não pode contornar as regras
+   da `Venda`. Se o anúncio tiver sido encerrado (`CANCELADA` ou `CONCLUIDA`) entre a alteração e a
+   tentativa de desfazer, a restauração deve falhar com `VendaEncerrada`. Se a `politica_preco` da
+   venda tiver sido trocada por uma política mais restritiva, um preço antigo que hoje exceda o
+   teto deve ser recusado com `PrecoAcimaDoLimite`. Além disso, um snapshot de uma venda não pode
+   ser aplicado a outra (`MementoDeOutraVenda`).
+3. **Persistência entre requisições HTTP**: como a API Flask é *stateless*, o *Caretaker* não pode
+   ser apenas uma lista em memória local à função; os mementos precisam sobreviver entre o
+   `PUT /anuncios/<venda_id>/preco` e os `POST /anuncios/<venda_id>/preco/desfazimento` seguintes.
+
+Depois de `7435b36`, a `Venda` fotografa e restaura seu próprio preço por meio de
+`MementoPrecoVenda`:
+
+```python
+class MementoPrecoVenda:
+    def __init__(self, venda_id: str, preco: Decimal):
+        self._venda_id = venda_id
+        self._preco = preco
+
+    @property
+    def venda_id(self) -> str:
+        return self._venda_id
+```
+
+```python
+class Venda:
+    # (...)
+    def salvar_preco(self) -> MementoPrecoVenda:
+        return MementoPrecoVenda(self.id, self.preco)
+
+    def restaurar_preco(self, memento: MementoPrecoVenda) -> None:
+        self._exigir_ativa("ter o preço restaurado")
+        if memento.venda_id != self.id:
+            raise MementoDeOutraVenda(
+                f"o preço guardado é da venda {memento.venda_id}, não da venda {self.id}"
+            )
+        self._validar_preco(memento._preco)
+        self.preco = memento._preco
+```
 
 ### Alternativa considerada
 
-<!--
-Responsável: Igor
-O enunciado exige: a alternativa considerada.
--->
+- **Padrão Command com `Execute()` / `Unexecute()`** (ex.: objeto `ComandoAlterarPreco` guardando
+  `venda_id`, `preco_anterior` e `novo_preco`): o catálogo GoF relaciona Command e Memento no
+  desfazimento de operações, mas aqui há apenas uma operação reversível (a troca de preço) e nenhum
+  requisito de fila de comandos, agendamento, macrocomandos ou *redo* polimórfico. Além disso,
+  mesmo usando Command, o próprio GoF aponta que o comando ainda precisaria guardar o estado
+  anterior da `Venda` para restaurá-lo sem expor mutação irrestrita — exatamente o papel do
+  Memento. Criar uma hierarquia de comandos somada à persistência do estado anterior traria duas
+  abstrações para resolver o problema de uma.
+- **Atributo `preco_anterior: Decimal | None` ou lista `precos_anteriores: list[Decimal]` dentro de
+  `Venda`**: um único campo `preco_anterior` permitiria apenas 1 nível de *undo* (um segundo reajuste
+  sobrescreveria o primeiro valor); já embutir uma pilha de histórico dentro de `Venda` poluiria a
+  entidade de domínio com estado de navegação de interface/aplicação, misturando o modelo do
+  anúncio com a mecânica de armazenamento do histórico.
+- **Enviar o preço antigo pelo cliente num novo `PUT /anuncios/<id>/preco`**: transfere para o
+  cliente a responsabilidade de lembrar a pilha de preços anteriores e perde a garantia de que a
+  operação restaura um preço que realmente esteve em vigor naquele anúncio.
 
 ### Participantes (classes reais)
 
-<!--
-Responsável: Igor
-O enunciado exige: os participantes do padrão, mapeados para as classes reais do código.
--->
+| Papel no GoF | No código (`domain/model.py`, `adapters/repository.py`, `service_layer/services.py`) | O que faz |
+| :--- | :--- | :--- |
+| **Originator** | `Venda` (`src/rocketicket/domain/model.py`) | Cria um `MementoPrecoVenda` com o preço atual em `salvar_preco()` (*CreateMemento*) e restaura seu preço a partir dele em `restaurar_preco(memento)` (*SetMemento*), validando que a venda está `ATIVA`, que o memento pertence ao mesmo `self.id` e que o valor atende a `self._validar_preco()`. |
+| **Memento** | `MementoPrecoVenda` (`src/rocketicket/domain/model.py`) | Guarda o snapshot do preço (`_venda_id` e `_preco`). Oferece interface estreita pública (`venda_id` via `@property` e `__repr__` sem expor o valor) para o *Caretaker* e interface larga (`_preco`) lida apenas por `Venda.restaurar_preco()`. |
+| **Caretaker** | `AbstractHistoricoDePrecos`, `SqlAlchemyHistoricoDePrecos` (`src/rocketicket/adapters/repository.py`), `FakeHistoricoDePrecos` (`tests/conftest.py`) e os serviços `alterar_preco` / `desfazer_alteracao_de_preco` (`src/rocketicket/service_layer/services.py`) | `alterar_preco()` pede `venda.salvar_preco()` antes de aplicar o novo preço e empilha o memento em `historico.guardar(memento)`. `desfazer_alteracao_de_preco()` desempilha o último memento com `historico.desempilhar(venda_id)` (LIFO) e o entrega a `venda.restaurar_preco(memento)`, sem inspecionar nem modificar `_preco`. |
+
+#### Interface estreita e interface larga em Python
+
+O capítulo de Memento do GoF destaca que o padrão exige duas interfaces: uma **ampla** para o
+*Originator* (que lê e grava o estado interno guardado) e uma **estreita** para o *Caretaker* (que
+só armazena e transporta o memento como um objeto opaco). Em C++, isso é imposto com `friend class
+Originator`. Em Python não existe a palavra-chave `friend`, então a fronteira é expressa pela
+convenção de encapsulamento da linguagem:
+
+- **Interface estreita (pública)**: `MementoPrecoVenda` expõe apenas a propriedade de leitura
+  `venda_id` (para o *Caretaker* indexar a pilha por anúncio) e um `__repr__` que identifica a
+  venda sem revelar o preço (`<MementoPrecoVenda da venda v-1>`). Não há propriedade pública `preco`
+  nem método de mutação.
+- **Interface larga (restrita ao Originator)**: o atributo `_preco` é privado por convenção e lido
+  exclusivamente por `Venda.restaurar_preco()`. No adaptador ORM (`src/rocketicket/adapters/orm.py`),
+  `_mapear_historico_precos()` liga explicitamente as colunas da tabela `historico_precos` (`id`,
+  `venda_id`, `preco`) aos atributos privados `_id`, `_venda_id` e `_preco`, permitindo persistir o
+  memento em SQLite sem abrir atributos públicos no domínio.
+
+#### Guarda das invariantes na restauração
+
+Diferente de um *setter* direto, `Venda.restaurar_preco(memento)` passa pelas mesmas barreiras de
+domínio de `Venda.alterar_preco(novo_preco)`:
+
+1. `self._exigir_ativa("ter o preço restaurado")` impede que uma venda já `CONCLUIDA` ou
+   `CANCELADA` tenha seu preço alterado retroativamente (`VendaEncerrada`).
+2. `if memento.venda_id != self.id` impede que um memento de outra venda seja aplicado por engano
+   (`MementoDeOutraVenda`).
+3. `self._validar_preco(memento._preco)` revalida o preço restaurado contra a `politica_preco`
+   vigente da venda (`PrecoAcimaDoLimite`).
+
+No serviço `alterar_preco()`, `memento = venda.salvar_preco()` é chamado antes da troca, mas
+`historico.guardar(memento)` só é executado **depois** que `venda.alterar_preco(novo_preco)` passa
+sem exceção — garantindo que tentativas inválidas (como preço acima do teto ou venda encerrada) não
+sujem a pilha de mementos.
 
 ### Diagrama de classes (Mermaid)
 
-<!--
-Responsável: Igor
-O enunciado exige: o diagrama de classes em Mermaid, com a fonte em texto neste arquivo.
--->
+```mermaid
+classDiagram
+    class Venda {
+        +str id
+        +str ticket_id
+        +str vendedor_id
+        +Decimal preco
+        +Decimal valor_original
+        +StatusVenda status
+        +PoliticaTetoPercentual politica_preco
+        +alterar_preco(novo_preco: Decimal) None
+        +salvar_preco() MementoPrecoVenda
+        +restaurar_preco(memento: MementoPrecoVenda) None
+        -_validar_preco(preco: Decimal) None
+        -_exigir_ativa(acao: str) None
+    }
+
+    class MementoPrecoVenda {
+        -str _venda_id
+        -Decimal _preco
+        +venda_id() str
+    }
+
+    class AbstractHistoricoDePrecos {
+        <<abstract>>
+        +guardar(memento: MementoPrecoVenda)* None
+        +desempilhar(venda_id: str)* MementoPrecoVenda | None
+    }
+
+    class SqlAlchemyHistoricoDePrecos {
+        +Session session
+        +guardar(memento: MementoPrecoVenda) None
+        +desempilhar(venda_id: str) MementoPrecoVenda | None
+    }
+
+    class FakeHistoricoDePrecos {
+        -dict~str, list~MementoPrecoVenda~~ _pilhas
+        +guardar(memento: MementoPrecoVenda) None
+        +desempilhar(venda_id: str) MementoPrecoVenda | None
+    }
+
+    class ServicesPreco {
+        <<service_layer>>
+        +alterar_preco(venda_id: str, novo_preco: Decimal, vendas, historico, session) Venda
+        +desfazer_alteracao_de_preco(venda_id: str, vendas, historico, session) Venda
+    }
+
+    Venda ..> MementoPrecoVenda : cria e lê _preco (interface larga)
+    AbstractHistoricoDePrecos o-- MementoPrecoVenda : guarda por venda_id (interface estreita)
+    AbstractHistoricoDePrecos <|-- SqlAlchemyHistoricoDePrecos
+    AbstractHistoricoDePrecos <|-- FakeHistoricoDePrecos
+    ServicesPreco ..> Venda : salvar_preco() / restaurar_preco()
+    ServicesPreco ..> AbstractHistoricoDePrecos : guardar() / desempilhar()
+```
 
 ### Teste
 
-<!--
-Responsável: Igor
-O enunciado exige: o teste que cobre o padrão.
--->
+Os testes novos estão divididos nas três camadas da suíte:
+
+| Testes | O que conferem |
+| :--- | :--- |
+| `tests/unit/test_venda_memento.py` (16 testes) | **Originator e Memento (9 testes):** `salvar_preco()` e `restaurar_preco()` devolvem o preço anterior; múltiplos mementos restauram em ordem LIFO; `MementoPrecoVenda` expõe apenas `venda_id` (interface estreita: sem atributo público `preco` e sem vazar o valor no `repr`); `salvar_preco()` não é afetado por mudanças posteriores na `Venda`; `restaurar_preco()` recusa venda `CANCELADA` e `CONCLUIDA` (`VendaEncerrada`), recusa memento de outra venda (`MementoDeOutraVenda`) e revalida a `PoliticaTetoPercentual` vigente (`PrecoAcimaDoLimite`). **Serviços com fakes (7 testes):** `alterar_preco` atualiza o preço e empilha o memento; `desfazer_alteracao_de_preco` restaura o preço anterior e suporta múltiplos níveis LIFO; desfazer sem histórico lança `SemAlteracaoDePreco`; venda inexistente lança `VendaNaoEncontrada`; falha em `alterar_preco` (acima do teto) não empilha memento; falha em `desfazer_alteracao_de_preco` (venda encerrada) não faz commit. |
+| `tests/integration/test_historico_precos.py` (5 testes) | `SqlAlchemyHistoricoDePrecos` persiste na tabela `historico_precos` e desempilha o último preço salvo; múltiplos mementos da mesma venda saem em ordem LIFO (`ORDER BY id DESC`) e são removidos da tabela ao desempilhar; venda sem histórico retorna `None`; pilhas de vendas distintas não interferem entre si; fluxo completo de `services.alterar_preco` e `services.desfazer_alteracao_de_preco` contra sessão SQLite real. |
+| `tests/e2e/test_preco_api.py` (6 testes) | Rotas HTTP `PUT /anuncios/<venda_id>/preco` e `POST /anuncios/<venda_id>/preco/desfazimento`: alteração e desfazimento em múltiplos passos retornam `200`; desfazer sem histórico retorna `409` (`SemAlteracaoDePreco`); preço acima do teto de 110% retorna `400` e preserva o preço atual; anúncio inexistente retorna `404` nas duas rotas; anúncio já cancelado recusa desfazimento com `400` (`VendaEncerrada`). |
+
+Na suíte completa, os 256 testes que existiam antes do commit `7435b36` continuaram passando sem
+nenhuma linha de teste existente modificada, somados aos 27 testes novos:
+
+```text
+$ git show 7435b36 --stat
+ src/rocketicket/adapters/orm.py            |  29 ++++-
+ src/rocketicket/adapters/repository.py     |  45 +++++++
+ src/rocketicket/domain/model.py            |  34 ++++++
+ src/rocketicket/entrypoints/flask_app.py   |  24 ++++
+ src/rocketicket/service_layer/services.py  |  54 ++++++++-
+ tests/conftest.py                          |  24 ++++
+ tests/e2e/test_preco_api.py                |  54 +++++++++
+ tests/integration/test_historico_precos.py |  74 ++++++++++++
+ tests/unit/test_venda_memento.py           | 186 +++++++++++++++++++++++++++++
+ 9 files changed, 520 insertions(+), 2 deletions(-)
+
+$ pytest tests          # em 7435b36^ (a4f0292): 256 passed
+$ pytest tests          # em 7435b36:            283 passed
+```
 
 ### Custo
 
-<!--
-Responsável: Igor
-O enunciado exige: o custo de introduzir o padrão.
--->
+- **Volume e novas estruturas:** a mudança somou `+520` e `-2` linhas em 9 arquivos, introduzindo
+  uma classe de domínio (`MementoPrecoVenda`), duas exceções (`MementoDeOutraVenda` e
+  `SemAlteracaoDePreco`), uma porta e dois adaptadores de histórico (`AbstractHistoricoDePrecos`,
+  `SqlAlchemyHistoricoDePrecos`, `FakeHistoricoDePrecos`), uma tabela relacional
+  (`historico_precos`), dois casos de uso e duas rotas HTTP.
+- **Ausência de `friend` em Python:** como a linguagem não impõe visibilidade por classe amiga, a
+  separação entre interface estreita e interface larga depende da convenção `_preco` e exige
+  propriedades explícitas (`_id`, `_venda_id`, `_preco`) no mapeamento imperativo do SQLAlchemy em
+  `_mapear_historico_precos()`.
+- **Custos de armazenamento do Caretaker (Consequência 5 do GoF):** cada chamada bem-sucedida a
+  `alterar_preco()` insere uma linha em `historico_precos`. Como o *Caretaker* não conhece o
+  conteúdo nem o ciclo de vida interno da `Venda`, mementos empilhados de um anúncio que depois é
+  concluído ou cancelado permanecem na tabela sem poderem mais ser restaurados (já que
+  `restaurar_preco()` recusa vendas encerradas). Em produção, isso exigiria limpeza ao encerrar a
+  venda ou um limite de profundidade na pilha por anúncio.
+
+**Por que compensa.** A `Venda` continua coesa — preocupada apenas com o estado do anúncio e com a
+`PoliticaTetoPercentual` — sem carregar listas de histórico nem conhecer a tabela
+`historico_precos`. Ao mesmo tempo, o desfazimento nunca fura o domínio: toda restauração passa
+obrigatoriamente por `Venda.restaurar_preco()`, que garante que venda encerrada não muda de preço e
+que nenhuma regra anti-cambismo é contornada. Trocar a estratégia de retenção do histórico (por
+exemplo, limitar a pilha aos últimos 5 preços ou limpar ao concluir a venda) mexe apenas no
+*Caretaker* (`SqlAlchemyHistoricoDePrecos`), sem tocar na entidade `Venda`.
 
 ## Miguel — Observer
 

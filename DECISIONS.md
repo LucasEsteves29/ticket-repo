@@ -737,3 +737,44 @@ um primeiro rascunho da minha seção do docs/gof.md, desta entrada e da nota no
 Eu revisei o código e o texto, conferi os números e as afirmações sobre o código, rodei a
 suíte na minha máquina, ajustei o que não correspondia ao que eu tinha pedido e fiz os
 commits. A responsabilidade pelo conteúdo é minha.
+
+
+### Igor Leal (@igorbleal)
+
+**O que fiz:** apliquei o padrão Memento ao preço do anúncio, no agregado Venda, para
+permitir desfazer alterações de preço. Em domain/model.py, criei o MementoPrecoVenda e a
+exceção MementoDeOutraVenda, e acrescentei à Venda os métodos salvar_preco() e
+restaurar_preco(). O caretaker é a AbstractHistoricoDePrecos, em adapters/repository.py,
+com o SqlAlchemyHistoricoDePrecos (tabela historico_precos, mapeada em orm.py) e o
+FakeHistoricoDePrecos no conftest.py. Criei os casos de uso alterar_preco e
+desfazer_alteracao_de_preco, com a exceção SemAlteracaoDePreco, e os endpoints
+PUT /anuncios/<id>/preco e POST /anuncios/<id>/preco/desfazimento. Escrevi 27 testes
+(unitários, de integração e e2e) e a minha seção do docs/gof.md, com o diagrama.
+
+**Arquivos:** src/rocketicket/domain/model.py, src/rocketicket/adapters/orm.py,
+src/rocketicket/adapters/repository.py, src/rocketicket/service_layer/services.py,
+src/rocketicket/entrypoints/flask_app.py, tests/conftest.py,
+tests/unit/test_venda_memento.py, tests/integration/test_historico_precos.py,
+tests/e2e/test_preco_api.py, docs/gof.md, DECISIONS.md
+
+**Commits:** `7435b36` (09/11, implementação e testes) e o commit deste registro (10/11,
+docs/gof.md e DECISIONS.md).
+
+**Decisão:**
+- O histórico fica fora da Venda, numa porta própria com tabela própria, e não numa lista
+  ou coluna dentro do agregado. Assim a Venda continua sem gerenciar versões do próprio
+  estado (consequência 2 do GoF) e o desfazer funciona entre requisições diferentes.
+- restaurar_preco() passa por _exigir_ativa() e pela política de teto, como
+  alterar_preco(). Um memento não pode servir de atalho para mudar o preço de uma venda
+  encerrada ou acima do limite atual.
+- No service, o memento é guardado só depois de a alteração ser aceita, e descartado só
+  depois de a restauração ser aceita. Uma operação recusada não deixa o histórico pela
+  metade, como verificam os testes.
+- Escolhi Memento, e não Command, porque o problema é guardar estado, e não parametrizar ou
+  enfileirar requisições: com uma única operação desfazível, persistir comandos inteiros
+  seria custo sem benefício.
+
+**Uso de IA:** usei o Antigravity (Google) como assistente neste checkpoint. Ele leu o
+repositório, redigiu o código e os testes e um rascunho da seção do docs/gof.md e deste
+registro. Eu revisei e corrigi o código e o texto, rodei a suíte com pytest e conferi hashes, números
+e afirmações. A responsabilidade pelo conteúdo é minha.
