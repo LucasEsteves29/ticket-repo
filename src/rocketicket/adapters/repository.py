@@ -8,6 +8,9 @@ tests/conftest.py.
 """
 
 import abc
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Generic, TypeVar
 
 from rocketicket.domain import model
@@ -34,7 +37,72 @@ class AbstractRepository(abc.ABC, Generic[T]):
 
 
 # Ticket — Caio
-class SqlAlchemyTicketRepository(AbstractRepository[model.Ticket]):
+class AbstractTicketRepository(AbstractRepository[model.Ticket]):
+    @abc.abstractmethod
+    def list(self) -> list[model.Ticket]:
+        raise NotImplementedError
+
+    def usar(self, id: str) -> model.Ticket | None:
+        """Aplica o check-in sem confirmar a transação."""
+        ticket = self.get(id)
+        if ticket is not None:
+            ticket.usar()
+        return ticket
+
+
+@dataclass(frozen=True)
+class RegistroCheckIn:
+    ticket_id: str
+    dono_id: str
+    ocorrido_em: datetime
+
+
+class TicketRepositoryDecorator(AbstractTicketRepository):
+    """Mantém o contrato e delega ao repositório envolvido."""
+
+    def __init__(self, repository: AbstractTicketRepository):
+        self.repository = repository
+
+    def add(self, ticket: model.Ticket) -> None:
+        self.repository.add(ticket)
+
+    def get(self, id: str) -> model.Ticket | None:
+        return self.repository.get(id)
+
+    def list(self) -> list[model.Ticket]:
+        return self.repository.list()
+
+    def usar(self, id: str) -> model.Ticket | None:
+        return self.repository.usar(id)
+
+
+class AuditedTicketRepository(TicketRepositoryDecorator):
+    """Acrescenta auditoria ao check-in sem alterar a persistência envolvida.
+
+    O registrador deve participar da transação do chamador. Tentativas
+    recusadas pelo domínio ou tickets inexistentes não geram sucesso.
+    """
+
+    def __init__(
+        self,
+        repository: AbstractTicketRepository,
+        registrar: Callable[[RegistroCheckIn], None],
+    ):
+        super().__init__(repository)
+        self.registrar = registrar
+
+    def usar(self, id: str) -> model.Ticket | None:
+        ticket = super().usar(id)
+        if ticket is not None:
+            self.registrar(RegistroCheckIn(
+                ticket_id=ticket.id,
+                dono_id=ticket.dono_id,
+                ocorrido_em=datetime.now(timezone.utc),
+            ))
+        return ticket
+
+
+class SqlAlchemyTicketRepository(AbstractTicketRepository):
     """Persistência de tickets usando uma sessão SQLAlchemy."""
 
     def __init__(self, session):

@@ -1,6 +1,7 @@
 import pytest
 from rocketicket.adapters.repository import (
     AbstractRepository,
+    AbstractTicketRepository,
     AbstractVendaRepository,
     AbstractHistoricoDePrecos,
 )
@@ -57,7 +58,7 @@ class FakeSession:
 def fake_session():
     return FakeSession()
 
-class FakeTicketRepository(AbstractRepository[model.Ticket]):
+class FakeTicketRepository(AbstractTicketRepository):
     """Implementação em memória do repositório de Ticket."""
 
     def __init__(self, tickets=None):

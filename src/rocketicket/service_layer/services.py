@@ -1,6 +1,11 @@
 from decimal import Decimal
 
-from rocketicket.adapters.repository import AbstractHistoricoDePrecos, AbstractRepository, ConsultaVendaAtiva
+from rocketicket.adapters.repository import (
+    AbstractHistoricoDePrecos,
+    AbstractRepository,
+    AbstractTicketRepository,
+    ConsultaVendaAtiva,
+)
 from rocketicket.domain import model
 
 
@@ -44,6 +49,14 @@ def emitir_ticket(
 
 
 # usar_ticket: Caio
+def usar_ticket(
+    ticket_id: str,
+    repo: AbstractTicketRepository,
+    session,
+) -> None:
+    if repo.usar(ticket_id) is None:
+        raise RecursoNaoEncontrado(f"ticket {ticket_id} não existe")
+    session.commit()
 
 
 # criar_anuncio: Igor
