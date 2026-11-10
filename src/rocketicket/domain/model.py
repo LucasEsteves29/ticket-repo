@@ -219,6 +219,24 @@ class PrecoAcimaDoLimite(ErroDeDominio):
     """Tentativa de criar anúncio ou alterar preço acima de 110% do valor original."""
 class VendaEncerrada(ErroDeDominio):
     """Tentativa de alterar, cancelar ou concluir uma venda já cancelada ou concluída."""
+class MementoDeOutraVenda(ErroDeDominio):
+    """Tentativa de restaurar o preço de uma venda com o memento de outra venda."""
+class MementoPrecoVenda:
+    """Padrão Memento: o preço de uma Venda em um momento, guardado fora dela.
+
+    Interface estreita (pública): só venda_id, para quem guarda o memento saber de
+    qual anúncio ele é. Interface larga: _preco, lido só por Venda.restaurar_preco().
+    Python não tem o friend do C++, então a fronteira é a convenção do sublinhado.
+    O memento é passivo: só a Venda que o criou atribui ou lê o preço.
+    """
+    def __init__(self, venda_id: str, preco: Decimal):
+        self._venda_id = venda_id
+        self._preco = preco
+    @property
+    def venda_id(self) -> str:
+        return self._venda_id
+    def __repr__(self) -> str:
+        return f"<MementoPrecoVenda da venda {self._venda_id}>"
 class PoliticaTetoPercentual:
     """Responsável pelo cálculo e validação do teto de preço de revenda.
     Separa a regra financeira anti-cambismo (fator percentual e truncamento em
@@ -272,6 +290,22 @@ class Venda:
         self._exigir_ativa("ter o preço alterado")
         self._validar_preco(novo_preco)
         self.preco = novo_preco
+    def salvar_preco(self) -> MementoPrecoVenda:
+        """Memento (CreateMemento): fotografa o preço atual do anúncio."""
+        return MementoPrecoVenda(self.id, self.preco)
+    def restaurar_preco(self, memento: MementoPrecoVenda) -> None:
+        """Memento (SetMemento): volta o preço ao que estava guardado no memento.
+
+        Segue as mesmas regras de alterar_preco(): venda encerrada não muda de
+        preço e o preço restaurado precisa respeitar a política de teto atual.
+        """
+        self._exigir_ativa("ter o preço restaurado")
+        if memento.venda_id != self.id:
+            raise MementoDeOutraVenda(
+                f"o preço guardado é da venda {memento.venda_id}, não da venda {self.id}"
+            )
+        self._validar_preco(memento._preco)
+        self.preco = memento._preco
     def cancelar(self) -> None:
         """Encerra o anúncio sem venda. CANCELADA é estado final."""
         self._exigir_ativa("ser cancelada")
