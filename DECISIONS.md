@@ -778,3 +778,68 @@ docs/gof.md e DECISIONS.md).
 repositório, redigiu o código e os testes e um rascunho da seção do docs/gof.md e deste
 registro. Eu revisei e corrigi o código e o texto, rodei a suíte com pytest e conferi hashes, números
 e afirmações. A responsabilidade pelo conteúdo é minha.
+
+### Caio Jose Carneiro (@caiojosesouz-dotcom)
+
+**O que foi feito:** implementação do padrão Decorator para auditar check-ins
+do agregado Ticket e documentação da seção de Caio em `docs/gof.md`, incluindo
+categoria, problema, alternativas, participantes reais, diagrama Mermaid,
+evidências dos testes e custos. A implementação acrescentou o contrato
+`AbstractTicketRepository`, o decorator base `TicketRepositoryDecorator`, o
+decorator concreto `AuditedTicketRepository` e os dados imutáveis
+`RegistroCheckIn`. O registrador `SqlAlchemyCheckInAudit` grava na tabela
+`checkins` usando a mesma sessão que persiste o Ticket. O serviço `usar_ticket`
+controla o commit, e a rota `POST /tickets/<ticket_id>/check-in` monta a composição.
+
+**Arquivos da implementação:** `src/rocketicket/adapters/repository.py`,
+`src/rocketicket/adapters/audit.py`, `src/rocketicket/adapters/orm.py`,
+`src/rocketicket/service_layer/services.py`,
+`src/rocketicket/entrypoints/flask_app.py`, `tests/conftest.py`,
+`tests/unit/test_ticket_repository_decorator.py`,
+`tests/integration/test_ticket_repository.py`, `tests/e2e/test_ticket_api.py`
+e `README.md`.
+
+**Arquivos desta etapa (10/11/2026):** `docs/gof.md` e `DECISIONS.md`.
+
+**Commits:** `b48915a` (09/11, implementação e testes), `83c8fa4` (09/11,
+integração da main e resolução dos conflitos com State e Memento) e o commit
+deste registro (10/11, documentação). A implementação foi integrada pelo PR #32,
+merge `150c3be`.
+
+**Decisões:**
+
+- Usar composição para acrescentar a auditoria ao repositório, preservando
+  `add/get/list/usar`. A classe concreta SQLAlchemy passou a herdar do contrato
+  específico de Ticket, mas seus métodos de persistência não receberam lógica
+  de auditoria. As regras de uso continuam em `Ticket.usar()` e nos estados.
+- Receber o registrador como `Callable[[RegistroCheckIn], None]`, para testar
+  o decorator com um fake e uma lista em memória sem carregar SQLAlchemy.
+- Registrar apenas depois que o repositório envolvido aceita o check-in. Ticket
+  inexistente ou recusado pelo domínio não gera registro de sucesso nem commit.
+- Persistir Ticket e auditoria na mesma transação. O decorator e o registrador
+  não fazem commit; o serviço confirma ambos. Uma falha exige descartar a
+  transação, e o rollback conjunto é verificado com o banco nos testes.
+- Guardar `ticket_id`, `dono_id` e instante UTC em uma dataclass congelada. A
+  chave primária `ticket_id` na tabela de auditoria admite um único registro
+  de check-in por Ticket, que tem `USADO` como estado final.
+- Preferir Decorator à herança do repositório concreto para permitir envolver
+  implementações diferentes. Evitar um log externo após o commit para não
+  criar uma janela de inconsistência entre o uso e seu registro.
+- Documentar os limites: o dono registrado não representa um operador
+  autenticado; chamadas fora do fluxo decorado não são auditadas; um registrador
+  externo não herda automaticamente a atomicidade da sessão SQLAlchemy; bancos
+  existentes precisam criar a tabela `checkins`.
+
+**Validação da implementação:** 248 testes passaram antes da integração com
+as mudanças do grupo; após integrar State e Memento, passaram 296. Os testes
+incluem delegação, recusas, dados do registro, serviço sem decorator, falha do
+registrador sem commit, persistência e rollback conjunto e respostas HTTP.
+Na etapa documental de 10/11, os três arquivos citados na seção de testes do
+`docs/gof.md` foram executados novamente: 31 testes passaram. `git diff --check`
+também passou, e esta etapa não altera código nem testes.
+
+**Uso de IA:** o Codex (OpenAI) foi utilizado como assistente para ler o
+repositório, implementar o Decorator e o fluxo de check-in, escrever e executar
+os testes, resolver os conflitos e preparar o commit e o PR #32 com a autoria
+Git configurada de Caio. Nesta etapa, o Codex redigiu a seção de `docs/gof.md`,
+o diagrama Mermaid e este registro a partir do código e dos testes existentes.

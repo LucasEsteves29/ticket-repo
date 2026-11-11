@@ -252,52 +252,170 @@ operações novas: um método novo no Ticket, como um `reservar()`, ainda exige 
 
 ### Nome e categoria
 
-<!--
-Responsável: Caio
-O enunciado exige: o nome do padrão e a sua categoria no GoF.
--->
+**Decorator**, padrão estrutural do GoF. Acrescenta uma responsabilidade a um
+objeto por composição, preservando o contrato que o cliente utiliza. Aqui,
+`AuditedTicketRepository` envolve um repositório de Ticket e acrescenta auditoria
+ao check-in. A implementação está no commit `b48915a`.
 
 ### Contexto e problema
 
-<!--
-Responsável: Caio
-O enunciado exige: o contexto e o problema real do domínio que o padrão resolve.
--->
+O check-in muda o Ticket de `VENDIDO` para `USADO`. Além dessa regra de domínio,
+é necessário guardar qual ticket foi usado, seu dono e o instante da operação.
+Colocar essa gravação em `Ticket.usar()` faria o domínio conhecer a auditoria;
+colocá-la diretamente em `SqlAlchemyTicketRepository` ligaria essa responsabilidade
+a uma implementação de persistência específica.
+
+O contrato `AbstractTicketRepository` estende `AbstractRepository[Ticket]` com
+`list()` e `usar(id)`. Sua implementação de `usar()` busca o ticket e chama
+`Ticket.usar()`, devolvendo o objeto ou `None` quando não existe. O repositório
+SQLAlchemy passou a herdar desse contrato, mantendo seus métodos de persistência.
+As regras de permissão continuam no domínio, atualmente implementadas pelo State.
+
+O decorator delega o check-in ao objeto envolvido e, se receber um Ticket, cria
+um `RegistroCheckIn` imutável com `ticket_id`, `dono_id` e `ocorrido_em` em UTC.
+Se a operação lançar uma exceção ou devolver `None`, não registra sucesso.
+`add()`, `get()` e `list()` continuam delegados sem gerar auditoria.
+
+Na rota `POST /tickets/<ticket_id>/check-in`, a composição é:
+
+```python
+repo = repository.AuditedTicketRepository(
+    ticket_repository_factory(g.session),
+    SqlAlchemyCheckInAudit(g.session),
+)
+services.usar_ticket(ticket_id, repo, g.session)
+```
+
+`SqlAlchemyCheckInAudit` insere na tabela `checkins` usando a mesma sessão da
+requisição. O serviço faz o único `commit`, depois do check-in e da inserção.
+Assim, um rollback desfaz tanto a mudança de status quanto a auditoria. O registro
+é preparado antes do commit e só se torna durável quando a transação é confirmada.
 
 ### Alternativa considerada
 
-<!--
-Responsável: Caio
-O enunciado exige: a alternativa considerada.
--->
+- **Gravar na entidade Ticket:** mistura as regras de uso com uma integração de
+  auditoria e exige mudar o domínio para trocar o destino do registro.
+- **Criar uma subclasse do repositório SQLAlchemy:** funciona para esse banco,
+  mas prende a auditoria à implementação concreta. A composição permite envolver
+  tanto o repositório SQLAlchemy quanto o fake dos testes.
+- **Gravar diretamente na rota ou no serviço:** é mais curto para um caso único,
+  mas espalha a responsabilidade de auditoria pelo cliente do repositório. O
+  Decorator concentra esse comportamento e permite usar o serviço com ou sem ele.
+- **Publicar um log externo depois do commit:** facilita integrar uma ferramenta
+  de logs, mas deixa uma janela em que o Ticket está usado e o log falha. A opção
+  atual prioriza a atomicidade no mesmo banco; um destino externo confiável
+  exigiria outro mecanismo, como uma outbox transacional.
 
 ### Participantes (classes reais)
 
-<!--
-Responsável: Caio
-O enunciado exige: os participantes do padrão, mapeados para as classes reais do código.
--->
+| Papel | Classe ou função real | Responsabilidade |
+|---|---|---|
+| Component | `AbstractTicketRepository` em `adapters/repository.py` | contrato comum de `add`, `get`, `list` e `usar` |
+| ConcreteComponent | `SqlAlchemyTicketRepository`; `FakeTicketRepository` em `tests/conftest.py` | persistência SQLAlchemy ou armazenamento em memória |
+| Decorator | `TicketRepositoryDecorator` | guarda uma referência ao componente e delega as quatro operações |
+| ConcreteDecorator | `AuditedTicketRepository` | sobrescreve `usar` para registrar o check-in aceito |
+| Cliente | `services.usar_ticket` | usa o contrato e confirma a transação; transforma ausência em `RecursoNaoEncontrado` |
+| Composição | rota `usar_ticket` em `entrypoints/flask_app.py` | monta o decorator com o repositório e o registrador na mesma sessão |
+| Colaborador da auditoria | `SqlAlchemyCheckInAudit` em `adapters/audit.py` | implementa o callable recebido pelo decorator e insere em `checkins`, sem commit |
+| Dados do registro | `RegistroCheckIn` em `adapters/repository.py` | dataclass congelada com ticket, dono e instante UTC |
 
 ### Diagrama de classes (Mermaid)
 
-<!--
-Responsável: Caio
-O enunciado exige: o diagrama de classes em Mermaid, com a fonte em texto neste arquivo.
--->
+```mermaid
+classDiagram
+    class AbstractTicketRepository {
+        <<abstract>>
+        +add(ticket)
+        +get(id)
+        +list()
+        +usar(id)
+    }
+    class SqlAlchemyTicketRepository {
+        +session
+        +add(ticket)
+        +get(id)
+        +list()
+    }
+    class FakeTicketRepository
+    class TicketRepositoryDecorator {
+        +repository: AbstractTicketRepository
+        +add(ticket)
+        +get(id)
+        +list()
+        +usar(id)
+    }
+    class AuditedTicketRepository {
+        +registrar: Callable
+        +usar(id)
+    }
+    class RegistroCheckIn {
+        +ticket_id: str
+        +dono_id: str
+        +ocorrido_em: datetime
+    }
+    class SqlAlchemyCheckInAudit {
+        +session
+        +__call__(registro)
+    }
+    class ServicoUsarTicket["services.usar_ticket"] {
+        <<function>>
+    }
+    AbstractTicketRepository <|-- SqlAlchemyTicketRepository
+    AbstractTicketRepository <|-- FakeTicketRepository
+    AbstractTicketRepository <|-- TicketRepositoryDecorator
+    TicketRepositoryDecorator <|-- AuditedTicketRepository
+    TicketRepositoryDecorator o-- AbstractTicketRepository : envolve e delega
+    AuditedTicketRepository ..> RegistroCheckIn : cria apos check-in aceito
+    AuditedTicketRepository --> SqlAlchemyCheckInAudit : callable injetado na rota
+    SqlAlchemyCheckInAudit ..> RegistroCheckIn : persiste na mesma sessao
+    ServicoUsarTicket ..> AbstractTicketRepository : usar e commit pelo chamador
+```
+
+O vínculo com `SqlAlchemyCheckInAudit` representa a composição na rota; o tipo
+aceito pelo decorator é `Callable[[RegistroCheckIn], None]`, permitindo usar
+`registros.append` nos testes sem importar SQLAlchemy.
 
 ### Teste
 
-<!--
-Responsável: Caio
-O enunciado exige: o teste que cobre o padrão.
--->
+| Arquivo | Evidência |
+|---|---|
+| `tests/unit/test_ticket_repository_decorator.py` | delegação de `add/get/list`, dados e horário UTC do registro, recusas nos três estados inválidos, ticket ausente, serviço sem decorator e falha do registrador sem commit |
+| `tests/integration/test_ticket_repository.py` | `test_checkin_e_auditoria_persistem_juntos` recarrega o Ticket do banco, confere o registro e impede um segundo check-in; `test_rollback_desfaz_checkin_e_auditoria` verifica que o rollback restaura `VENDIDO` e remove a inserção |
+| `tests/e2e/test_ticket_api.py` | `TestCheckIn` cobre resposta 200, repetição e ticket anunciado com 400, e ticket ausente com 404 |
+
+Para reproduzir a validação específica, a partir da raiz:
+
+```sh
+python -m pytest tests/unit/test_ticket_repository_decorator.py tests/integration/test_ticket_repository.py tests/e2e/test_ticket_api.py
+```
+
+Os unitários usam um registrador em memória e uma sessão fake; a atomicidade é
+comprovada pelos testes de integração com SQLAlchemy e SQLite, não pelo fake.
 
 ### Custo
 
-<!--
-Responsável: Caio
-O enunciado exige: o custo de introduzir o padrão.
--->
+- **Mais classes e delegações:** o fluxo passa pelo serviço, decorator,
+  repositório, domínio e registrador. Uma operação nova no contrato precisa ser
+  considerada também no decorator para preservar a substituição.
+- **Novo contrato de Ticket:** o fake e o repositório SQLAlchemy precisam cumprir
+  `AbstractTicketRepository`, incluindo a operação de check-in. O comportamento
+  de domínio continua no Ticket, mas passa a ser acionado por esse contrato.
+- **Uma escrita adicional e uma tabela:** `checkins` guarda o dono e o horário
+  do uso. Bancos existentes precisam criar a tabela antes de disponibilizar a rota.
+  A chave primária é `ticket_id`, coerente com um único check-in aceito por Ticket.
+- **A auditoria participa da disponibilidade do check-in:** se o registrador
+  falhar, o serviço não confirma a transação. O fluxo HTTP fecha a sessão,
+  descartando a transação pendente; outros chamadores devem fazer rollback ou
+  fechar a sessão em caso de erro. O objeto em memória já pode estar alterado.
+- **Limites do registro:** guarda o dono do Ticket, não a identidade de um operador
+  autenticado. Registra apenas check-ins aceitos pelo fluxo decorado; chamadas
+  diretas a `Ticket.usar()` ou ao serviço com repositório sem decorator não geram
+  auditoria. O callable injetado também deve participar da transação para manter
+  a garantia de atomicidade, como faz `SqlAlchemyCheckInAudit`.
+
+O ganho é acrescentar auditoria sem mudar as regras do Ticket nem inserir logs
+nos métodos de persistência SQLAlchemy, reutilizando o comportamento com outro
+repositório e mantendo a gravação durável consistente com o check-in.
 
 ## Igor — Memento
 
