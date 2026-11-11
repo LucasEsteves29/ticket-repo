@@ -219,6 +219,17 @@ class PrecoAcimaDoLimite(ErroDeDominio):
     """Tentativa de criar anúncio ou alterar preço acima de 110% do valor original."""
 class VendaEncerrada(ErroDeDominio):
     """Tentativa de alterar, cancelar ou concluir uma venda já cancelada ou concluída."""
+class ObservadorVenda:
+    """Padrão Observer (Observer): quem quer ser avisado quando uma Venda termina.
+
+    A Venda só conhece esta interface, nunca quem está do outro lado (e-mail,
+    push, log). As implementações concretas ficam fora do domínio, em
+    adapters/notifications.py.
+    """
+    def venda_concluida(self, venda: "Venda", comprador_id: str | None) -> None:
+        raise NotImplementedError
+    def venda_cancelada(self, venda: "Venda") -> None:
+        raise NotImplementedError
 class MementoDeOutraVenda(ErroDeDominio):
     """Tentativa de restaurar o preço de uma venda com o memento de outra venda."""
 class MementoPrecoVenda:
@@ -306,14 +317,41 @@ class Venda:
             )
         self._validar_preco(memento._preco)
         self.preco = memento._preco
+    def registrar_observador(self, observador: ObservadorVenda) -> None:
+        """Observer (Attach): passa a avisar esse observador quando a venda terminar."""
+        observadores = self._observadores()
+        if observador not in observadores:
+            observadores.append(observador)
+    def remover_observador(self, observador: ObservadorVenda) -> None:
+        """Observer (Detach): para de avisar esse observador."""
+        observadores = self._observadores()
+        if observador in observadores:
+            observadores.remove(observador)
+    def _observadores(self) -> list[ObservadorVenda]:
+        """Lista de observadores, criada sob demanda.
+
+        Fica fora do __init__ porque o SQLAlchemy recria a Venda carregada do banco
+        sem chamar o __init__, e os observadores não são persistidos.
+        """
+        return self.__dict__.setdefault("_lista_observadores", [])
     def cancelar(self) -> None:
-        """Encerra o anúncio sem venda. CANCELADA é estado final."""
+        """Encerra o anúncio sem venda. CANCELADA é estado final.
+
+        Observer (Notify): depois de mudar o estado, avisa cada observador.
+        """
         self._exigir_ativa("ser cancelada")
         self.status = StatusVenda.CANCELADA
-    def concluir(self) -> None:
-        """Encerra o anúncio com a venda feita. CONCLUIDA é estado final."""
+        for observador in list(self._observadores()):
+            observador.venda_cancelada(self)
+    def concluir(self, comprador_id: str | None = None) -> None:
+        """Encerra o anúncio com a venda feita. CONCLUIDA é estado final.
+
+        Observer (Notify): depois de mudar o estado, avisa cada observador.
+        """
         self._exigir_ativa("ser concluída")
         self.status = StatusVenda.CONCLUIDA
+        for observador in list(self._observadores()):
+            observador.venda_concluida(self, comprador_id)
     def _exigir_ativa(self, acao: str) -> None:
         """Venda cancelada ou concluída não volta a ATIVA nem muda de preço."""
         if self.status is not StatusVenda.ATIVA:
