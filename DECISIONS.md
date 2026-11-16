@@ -401,7 +401,7 @@ imperativo, as alternativas descartadas e as consequências.
 **Arquivos:** docs/arquitetura.md, docs/adr/template.md,
 docs/adr/0001-mapeamento-orm-imperativo.md
 
-**Commits:** ccecc85 (esqueletos do arquitetura.md e do template de ADR)
+**Commits:** ccecc85 (esqueletos do arquitetura.md e do template de ADR), f963f18 (ADR 0001)
 
 **Decisão:**
 - No ADR 0001, registrei as consequências negativas junto com as positivas,
@@ -415,7 +415,8 @@ docs/adr/0001-mapeamento-orm-imperativo.md
 **Uso de IA:** usei o Claude como assistente neste checkpoint, de duas formas.
 No chat, usei o Claude para planejar o esqueleto do docs/arquitetura.md e do
 docs/adr/template.md (as seis seções, o responsável e o que o enunciado exige em cada uma,
-e a numeração reservada dos ADRs) e para planejar o conteúdo do ADR 0001. Eu revisei os
+e a numeração reservada dos ADRs) e para planejar o conteúdo do ADR 0001. No Claude Code,
+usei o assistente para gerar esses arquivos a partir do que planejei. Eu revisei os
 arquivos gerados e ajustei o que não correspondia ao que eu tinha decidido. A
 responsabilidade pelo conteúdo é minha.
 
