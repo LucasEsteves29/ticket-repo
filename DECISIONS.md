@@ -411,6 +411,14 @@ docs/adr/0001-mapeamento-orm-imperativo.md
 - Cada seção do arquitetura.md traz, num comentário HTML, o que o enunciado exige
   e quem é o responsável, para cada integrante saber o que entregar sem precisar
   voltar ao enunciado.
+
+**Uso de IA:** usei o Claude como assistente neste checkpoint, de duas formas.
+No chat, usei o Claude para planejar o esqueleto do docs/arquitetura.md e do
+docs/adr/template.md (as seis seções, o responsável e o que o enunciado exige em cada uma,
+e a numeração reservada dos ADRs) e para planejar o conteúdo do ADR 0001. Eu revisei os
+arquivos gerados e ajustei o que não correspondia ao que eu tinha decidido. A
+responsabilidade pelo conteúdo é minha.
+
 ### Miguel Duque (@miguelduq)
 
 **O que fiz:** escrevi a seção 5 do docs/arquitetura.md, com a arquitetura
@@ -843,3 +851,77 @@ repositório, implementar o Decorator e o fluxo de check-in, escrever e executar
 os testes, resolver os conflitos e preparar o commit e o PR #32 com a autoria
 Git configurada de Caio. Nesta etapa, o Codex redigiu a seção de `docs/gof.md`,
 o diagrama Mermaid e este registro a partir do código e dos testes existentes.
+
+---
+
+## fase2-entrega — Frameworks e retrospectiva
+
+### Lucas Esteves (@LucasEsteves29)
+
+**O que fiz:**
+
+**Arquivos:**
+
+**Commits:**
+
+**Decisão:**
+
+**Uso de IA:**
+
+**Reflexão (150 a 300 palavras): o que aprendeu na Fase 2 e o que faria diferente.**
+
+### Caio Jose Carneiro (@caiojosesouz-dotcom)
+
+**O que fiz:**
+
+**Arquivos:**
+
+**Commits:**
+
+**Decisão:**
+
+**Uso de IA:**
+
+**Reflexão (150 a 300 palavras): o que aprendeu na Fase 2 e o que faria diferente.**
+
+### Igor Leal (@igorbleal)
+
+**O que fiz:**
+
+**Arquivos:**
+
+**Commits:**
+
+**Decisão:**
+
+**Uso de IA:**
+
+**Reflexão (150 a 300 palavras): o que aprendeu na Fase 2 e o que faria diferente.**
+
+### Miguel Duque (@miguelduq)
+
+**O que fiz:**
+
+**Arquivos:**
+
+**Commits:**
+
+**Decisão:**
+
+**Uso de IA:**
+
+**Reflexão (150 a 300 palavras): o que aprendeu na Fase 2 e o que faria diferente.**
+
+### Guilherme Boechat (@guilhermeboechat)
+
+**O que fiz:**
+
+**Arquivos:**
+
+**Commits:**
+
+**Decisão:**
+
+**Uso de IA:**
+
+**Reflexão (150 a 300 palavras): o que aprendeu na Fase 2 e o que faria diferente.**
