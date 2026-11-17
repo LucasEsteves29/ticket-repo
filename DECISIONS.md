@@ -420,6 +420,34 @@ usei o assistente para gerar esses arquivos a partir do que planejei. Eu revisei
 arquivos gerados e ajustei o que não correspondia ao que eu tinha decidido. A
 responsabilidade pelo conteúdo é minha.
 
+### Igor Leal (@igorbleal)
+
+**O que fiz:** escrevi o ADR 0003, que registra a decisão da Fase 1 de representar os
+valores monetários com Decimal e calcular o teto de revenda de 110% truncando em centavos
+com ROUND_DOWN. No contexto, descrevi os dois problemas que a decisão resolve: a
+imprecisão do float na fronteira do limite e o arredondamento para cima feito pela coluna
+Numeric(10, 2), que faria um teto como 109,989 voltar do banco como 109,99, acima dos
+110%. Registrei a decisão com o trecho de código de _validar_preco(), os commits em que ela
+foi implementada (cdd0311, 331685a, 186b52c, 2579d75 e e17c50a), quatro alternativas
+descartadas e as consequências positivas e negativas.
+
+**Arquivos:** docs/adr/0003-teto-de-revenda-decimal.md, DECISIONS.md
+
+**Commits:** b5ca4ad (22/10, ADR 0003) e o commit deste registro (16/11, DECISIONS.md).
+
+**Decisão:** usei como uma das alternativas descartadas a primeira versão real do código
+(cdd0311), que comparava o preço com valor_original * 1.10 sem quantize, em vez de uma
+alternativa hipotética. Assim o ADR mostra, com um caso concreto (109,985 para um valor
+original de 99,99), por que a comparação exata não bastava depois da persistência. Também
+registrei como consequência negativa a perda das frações de centavo no teto do vendedor,
+para que o custo da decisão ficasse explícito.
+
+**Uso de IA:** usei o Antigravity (Google Gemini) como assistente neste checkpoint. Ele leu
+o histórico de commits da Venda em domain/model.py e adapters/orm.py e redigiu um primeiro
+rascunho do ADR 0003 a partir das decisões que eu tinha tomado na Fase 1. Eu revisei o
+texto, conferi os hashes, os valores de exemplo e as afirmações sobre o código e ajustei o
+que não correspondia ao que fiz. A responsabilidade pelo conteúdo é minha.
+
 ### Miguel Duque (@miguelduq)
 
 **O que fiz:** escrevi a seção 5 do docs/arquitetura.md, com a arquitetura
