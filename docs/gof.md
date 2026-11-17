@@ -669,52 +669,185 @@ exemplo, limitar a pilha aos últimos 5 preços ou limpar ao concluir a venda) m
 
 ### Nome e categoria
 
-<!--
-Responsável: Miguel
-O enunciado exige: o nome do padrão e a sua categoria no GoF.
--->
+**Observer**, padrão comportamental do GoF. A intenção, nos termos do catálogo, é definir uma
+dependência um-para-muitos entre objetos, de modo que, quando um objeto muda de estado, todos
+os seus dependentes sejam notificados automaticamente. No RocketTicket, o objeto observado
+(*Subject*) é a `Venda`, e a mudança que interessa é o fim do anúncio: `concluir()` ou
+`cancelar()`.
+
+Introduzido em `32cf2cf` (Miguel, 09/11/2026).
 
 ### Contexto e problema
 
-<!--
-Responsável: Miguel
-O enunciado exige: o contexto e o problema real do domínio que o padrão resolve.
--->
+Quando um anúncio termina, duas pessoas precisam saber. Na conclusão, o vendedor precisa saber
+que o ticket foi vendido e por quanto, e o comprador precisa saber que a compra foi concluída.
+No cancelamento, o vendedor precisa da confirmação de que o anúncio saiu do ar. Antes de
+`32cf2cf`, os dois métodos só trocavam o status:
+
+```python
+def cancelar(self) -> None:
+    self._exigir_ativa("ser cancelada")
+    self.status = StatusVenda.CANCELADA
+
+def concluir(self) -> None:
+    self._exigir_ativa("ser concluída")
+    self.status = StatusVenda.CONCLUIDA
+```
+
+Avisar as pessoas esbarra em três restrições do projeto:
+
+1. **O domínio é puro.** O cabeçalho de `domain/model.py` proíbe importar adapters,
+   SQLAlchemy ou Flask. A `Venda` não pode chamar um serviço de e-mail ou de push.
+2. **Os interessados vão mudar.** Hoje são o vendedor e o comprador; amanhã podem ser um log de
+   auditoria, uma métrica de vendas ou a atualização de uma tela. Cada novo interessado não
+   deveria exigir editar `cancelar()` e `concluir()`.
+3. **O aviso só pode sair se a mudança aconteceu.** Uma tentativa recusada (concluir uma venda
+   já cancelada, que lança `VendaEncerrada`) não pode gerar mensagem nenhuma.
+
+Depois de `32cf2cf`, a `Venda` mantém uma lista de observadores e avisa cada um depois de mudar
+o estado:
+
+```python
+def concluir(self, comprador_id: str | None = None) -> None:
+    self._exigir_ativa("ser concluída")
+    self.status = StatusVenda.CONCLUIDA
+    for observador in list(self._observadores()):
+        observador.venda_concluida(self, comprador_id)
+```
+
+Como `_exigir_ativa()` vem antes, uma operação recusada lança a exceção e não chega ao laço de
+notificação. O `comprador_id` é opcional para não quebrar quem já chamava `concluir()` sem
+argumentos.
 
 ### Alternativa considerada
 
-<!--
-Responsável: Miguel
-O enunciado exige: a alternativa considerada.
--->
+1. **Chamar o envio de mensagens direto em `concluir()` e `cancelar()`.** Rejeitada: a `Venda`
+   teria de importar um adaptador de notificação, quebrando a pureza do domínio, e cada novo
+   interessado exigiria editar a entidade.
+2. **Notificar no service layer, depois de chamar `venda.concluir()`.** Era a alternativa mais
+   simples, e foi a mais considerada. Rejeitada porque o aviso ficaria em cada caso de uso que
+   encerra uma venda (`cancelar_anuncio`, a conclusão disparada pelo Pedido e o que vier
+   depois). Bastaria um caso de uso esquecer de notificar para o vendedor não ser avisado, e
+   nada no domínio impediria isso. Com o Observer, quem encerra a venda não precisa lembrar de
+   nada: o aviso é consequência da mudança de estado.
+3. **Eventos de domínio com message bus** (`events.py` e `messagebus.py`, do livro-texto).
+   Rejeitada: resolveria o mesmo problema com mais infraestrutura (fila de eventos, handlers,
+   Unit of Work coletando eventos), e esses padrões foram retirados do escopo da Fase 2. O
+   Observer entrega o desacoplamento com duas classes.
 
 ### Participantes (classes reais)
 
-<!--
-Responsável: Miguel
-O enunciado exige: os participantes do padrão, mapeados para as classes reais do código.
--->
+| Papel no GoF | No código | O que faz |
+| :--- | :--- | :--- |
+| **Subject** | `Venda` (`src/rocketicket/domain/model.py`) | Mantém a lista de observadores e oferece `registrar_observador()` (*Attach*) e `remover_observador()` (*Detach*). Em `concluir()` e `cancelar()`, depois de mudar o status, percorre a lista e avisa cada observador (*Notify*). |
+| **Observer** | `ObservadorVenda` (`src/rocketicket/domain/model.py`) | Interface com `venda_concluida(venda, comprador_id)` e `venda_cancelada(venda)`. É o único tipo que a `Venda` conhece. |
+| **ConcreteObserver** | `NotificadorDeVenda` (`src/rocketicket/adapters/notifications.py`) | Na conclusão, manda uma mensagem ao vendedor (anúncio vendido e o preço) e outra ao comprador (compra concluída). No cancelamento, avisa só o vendedor. |
+| **Canal de envio** (não é papel do GoF) | `AbstractNotificacoes` e `NotificacoesEmMemoria` (`src/rocketicket/adapters/notifications.py`) | Separa o *que* avisar (o observador) de *como* enviar (e-mail, push). `NotificacoesEmMemoria` guarda as mensagens numa lista e é usada nos testes. |
+
+O *ConcreteSubject* do GoF coincide com o *Subject*: só a `Venda` é observada, então não criei
+uma classe base genérica de Subject.
+
+#### Observadores numa entidade carregada pelo SQLAlchemy
+
+O mapeamento imperativo (`adapters/orm.py`) recria a `Venda` carregada do banco sem chamar o
+`__init__`. Se a lista de observadores fosse criada no `__init__`, uma venda vinda da sessão
+quebraria com `AttributeError` em `registrar_observador()`. Por isso a lista é criada sob
+demanda:
+
+```python
+def _observadores(self) -> list[ObservadorVenda]:
+    return self.__dict__.setdefault("_lista_observadores", [])
+```
+
+Os observadores não são persistidos: cada requisição registra os que precisa antes de encerrar a
+venda.
 
 ### Diagrama de classes (Mermaid)
 
-<!--
-Responsável: Miguel
-O enunciado exige: o diagrama de classes em Mermaid, com a fonte em texto neste arquivo.
--->
+```mermaid
+classDiagram
+    class Venda {
+        <<Subject>>
+        +str id
+        +str ticket_id
+        +str vendedor_id
+        +Decimal preco
+        +StatusVenda status
+        +registrar_observador(observador)
+        +remover_observador(observador)
+        +concluir(comprador_id)
+        +cancelar()
+        -_observadores() list
+    }
+    class ObservadorVenda {
+        <<Observer>>
+        +venda_concluida(venda, comprador_id)
+        +venda_cancelada(venda)
+    }
+    class NotificadorDeVenda {
+        <<ConcreteObserver>>
+        +venda_concluida(venda, comprador_id)
+        +venda_cancelada(venda)
+    }
+    class AbstractNotificacoes {
+        <<abstract>>
+        +enviar(destinatario_id, mensagem)
+    }
+    class NotificacoesEmMemoria {
+        +list enviadas
+        +enviar(destinatario_id, mensagem)
+        +para(destinatario_id) list
+    }
+
+    Venda o--> "0..*" ObservadorVenda : avisa
+    ObservadorVenda <|-- NotificadorDeVenda
+    NotificadorDeVenda --> AbstractNotificacoes : envia por
+    AbstractNotificacoes <|-- NotificacoesEmMemoria
+```
+
+`Venda` e `ObservadorVenda` ficam em `domain/`; `NotificadorDeVenda` e o canal de envio ficam em
+`adapters/`. A seta de dependência vai de `adapters/` para `domain/`, nunca o contrário.
 
 ### Teste
 
-<!--
-Responsável: Miguel
-O enunciado exige: o teste que cobre o padrão.
--->
+O arquivo `tests/unit/test_venda_observer.py` tem 10 testes:
+
+| Testes | O que conferem |
+| :--- | :--- |
+| `TestVendaComoSubject` (8 testes) | Usam um `ObservadorEspiao`, que só anota o que recebeu. `concluir(comprador_id=...)` avisa o observador já com o status `CONCLUIDA` e o comprador; `cancelar()` avisa com `CANCELADA`; todos os observadores registrados são avisados; registrar o mesmo observador duas vezes gera um aviso só; um observador removido não é mais avisado; uma operação recusada (`concluir()` numa venda cancelada, que lança `VendaEncerrada`) não avisa ninguém; uma venda sem observadores continua funcionando; uma venda recriada sem `__init__`, como faz o SQLAlchemy, aceita observadores. |
+| `TestNotificadorDeVenda` (2 testes) | Com `NotificacoesEmMemoria`: a conclusão manda uma mensagem ao vendedor (com o preço) e outra ao comprador; o cancelamento manda uma mensagem só, ao vendedor. |
+
+Nenhum teste existente foi alterado. Em `32cf2cf`, a suíte unitária passou de 146 para 156
+testes, todos verdes.
+
+```text
+$ python -m pytest tests/unit -q   # antes de 32cf2cf: 146 passed
+$ python -m pytest tests/unit -q   # em 32cf2cf:       156 passed
+```
 
 ### Custo
 
-<!--
-Responsável: Miguel
-O enunciado exige: o custo de introduzir o padrão.
--->
+- **Volume:** um arquivo de domínio alterado (`model.py`, com a interface `ObservadorVenda` e três
+  métodos novos na `Venda`) e dois arquivos novos: `adapters/notifications.py` (55 linhas) e
+  `tests/unit/test_venda_observer.py` (137 linhas).
+- **O fluxo fica menos explícito.** Quem lê `concluir()` vê um laço sobre observadores, mas não
+  vê quem recebe o aviso: isso depende do que foi registrado antes, em outro lugar. Para seguir o
+  efeito de uma venda concluída é preciso procurar as chamadas de `registrar_observador()`.
+- **Erro num observador interrompe os seguintes.** O aviso acontece depois da mudança de status,
+  dentro do mesmo método. Se um observador lançar uma exceção (por exemplo, o canal de envio
+  fora do ar), a venda já está concluída, mas os observadores seguintes não são avisados. Isolar
+  as falhas exigiria capturar a exceção de cada observador ou enviar as mensagens de forma
+  assíncrona.
+- **Observadores não persistem.** Como a `Venda` carregada do banco não traz a lista, cada caso de
+  uso precisa registrar os observadores antes de encerrar a venda. Hoje nenhum caso de uso faz
+  isso: o `confirmar_pedido` ainda não conclui a venda e o `cancelar_anuncio` não foi
+  implementado. O padrão está pronto e testado, mas ainda não está ligado ao fluxo da API.
+
+**Por que compensa.** A `Venda` continua pura e não sabe que existem e-mail ou push. Um novo
+interessado (auditoria, métricas, atualização de tela) entra como mais um `ObservadorVenda`, sem
+editar `concluir()` nem `cancelar()`. E a regra mais importante, a de que só se avisa quando a
+venda de fato terminou, fica garantida pela própria entidade, e não pela disciplina de cada caso
+de uso.
 
 ## Guilherme — Adapter
 
