@@ -881,6 +881,39 @@ os testes, resolver os conflitos e preparar o commit e o PR #32 com a autoria
 Git configurada de Caio. Nesta etapa, o Codex redigiu a seção de `docs/gof.md`,
 o diagrama Mermaid e este registro a partir do código e dos testes existentes.
 
+### Miguel Duque (@miguelduq)
+
+**O que fiz:** implementei o padrão Observer no agregado Venda. A Venda passou a ser o
+Subject, com registrar_observador() e remover_observador(), e agora avisa os observadores
+em concluir() e cancelar(), sempre depois de mudar o status. Criei a interface
+ObservadorVenda no domínio e, em adapters/notifications.py, o observador concreto
+NotificadorDeVenda, que avisa vendedor e comprador por meio de um canal
+AbstractNotificacoes (NotificacoesEmMemoria nos testes). Escrevi 10 testes em
+tests/unit/test_venda_observer.py e, nesta etapa, a seção do Observer no docs/gof.md.
+
+**Arquivos:** src/rocketicket/domain/model.py, src/rocketicket/adapters/notifications.py,
+tests/unit/test_venda_observer.py, docs/gof.md, DECISIONS.md
+
+**Commits:** 32cf2cf (09/11, implementação e testes), 53c4f89 (16/11, seção no
+docs/gof.md) e o commit deste registro (16/11).
+
+**Decisão:** criei a lista de observadores sob demanda, em _observadores(), e não no
+`__init__`. O mapeamento imperativo do SQLAlchemy recria a Venda carregada do banco sem
+chamar o `__init__`, e uma lista criada só ali faria registrar_observador() falhar
+justamente nas vendas que vêm da sessão. Há um teste que recria a Venda sem `__init__`
+para garantir isso.
+
+**Limitação que registrei no gof.md:** nenhum caso de uso registra o observador ainda,
+porque o confirmar_pedido não conclui a venda e o cancelar_anuncio não foi implementado.
+O padrão está implementado e testado, mas não está ligado ao fluxo da API.
+
+**Uso de IA:** usei o Claude (Anthropic) como assistente neste checkpoint. Ele leu o
+código da Venda e o plano do grupo, escreveu a interface ObservadorVenda, os métodos
+novos da Venda, o adapters/notifications.py e os testes de test_venda_observer.py, e
+redigiu a seção do Observer no docs/gof.md e este registro. Eu rodei a suíte de testes
+na minha máquina, revisei o código e o texto e fiz os commits. A responsabilidade pelo
+conteúdo é minha.
+
 ---
 
 ## fase2-entrega — Frameworks e retrospectiva
