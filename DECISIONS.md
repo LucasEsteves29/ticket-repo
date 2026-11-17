@@ -924,14 +924,14 @@ conteúdo é minha.
 
 **Arquivos:** docs/arquitetura.md, docs/frameworks.md, docs/retrospectiva.md, DECISIONS.md
 
-**Commits:** d7baf0b (esqueletos da entrega), f13b205 (seções do arquitetura.md), cda8e4c (correção do checkpoint 1)
+**Commits:** d7baf0b (esqueletos da entrega), f13b205 (seções do arquitetura.md), cda8e4c (correção do checkpoint 1), 27b027a (frameworks.md), 83d9f4f (retrospectiva.md e este autorrelato)
 
 **Decisão:**
 
 Completei o arquitetura.md mesmo depois do checkpoint 1, porque o documento é avaliado no estado final e estava com cinco das seis seções vazias. Para a análise continuar coerente com a seção 5, que é do checkpoint 1, usei exatamente os mesmos quatro atributos dela.
 Toda afirmação dos três documentos foi conferida no código antes de entrar: as medidas de tempo e de linhas, o Identity Map e o Unit of Work da Session (rodando o mapeamento real) e o defeito da confirmação dupla, que reproduzi pela API. Foi esse teste que mostrou que a previsão de corretude do checkpoint 1 só se confirmou em parte, e a retrospectiva assume isso em vez de esconder.
 
-**Uso de IA**: usei o Claude nessa entrega. Para auxiliar na criação da estrutura dos documentos, com base na análise do repositório, e para realizar correções gramaticais e ortográficas no texto. Todo o conteúdo foi revisado por mim, sendo de minha responsabilidade a definição, validação e versão final dos documentos.
+**Uso de IA**: usei o Claude em todos os documentos desta entrega. No Claude Code, o assistente escreveu as seções 1 a 4 e 6 do docs/arquitetura.md a partir do meu plano, e eu revisei o texto e pedi as correções que encontrei. O docs/frameworks.md e o docs/retrospectiva.md foram redigidos pelo Claude, e eu rodei as verificações citadas nos documentos (medidas, comportamento da Session e a reprodução da confirmação dupla pela API). Eu defini o que cada documento precisava cobrir, revisei o conteúdo e conferi as afirmações. Na reflexão reestruturei o texto com o Claude e também fiz correções ortográficas com ele. A responsabilidade pelo conteúdo é minha.
 
 **Reflexão (150 a 300 palavras): o que aprendeu na Fase 2 e o que faria diferente.**:
 
