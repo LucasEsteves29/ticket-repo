@@ -920,17 +920,27 @@ conteúdo é minha.
 
 ### Lucas Esteves (@LucasEsteves29)
 
-**O que fiz:**
+**O que fiz:** criei os esqueletos da entrega final (a seção fase2-entrega deste arquivo, o docs/frameworks.md e o docs/retrospectiva.md) e completei as seções 1, 2, 3, 4 e 6 do docs/arquitetura.md, que estavam vazias desde o checkpoint 1. Escrevi os atributos de qualidade como cenários, usando os mesmos quatro atributos da seção 5, o diagrama de componentes com a direção real dos imports, a análise de trade-offs por atributo e as evidências medidas no repositório. Depois escrevi o docs/frameworks.md (papel do Flask, do SQLAlchemy e do pytest, três pontos de inversão de controle e seis padrões internos localizados no nosso código, e a comparação com o Django) e o docs/retrospectiva.md.
 
-**Arquivos:**
+**Arquivos:** docs/arquitetura.md, docs/frameworks.md, docs/retrospectiva.md, DECISIONS.md
 
-**Commits:**
+**Commits:** d7baf0b (esqueletos da entrega), f13b205 (seções do arquitetura.md), cda8e4c (correção do checkpoint 1)
 
 **Decisão:**
 
-**Uso de IA:**
+Completei o arquitetura.md mesmo depois do checkpoint 1, porque o documento é avaliado no estado final e estava com cinco das seis seções vazias. Para a análise continuar coerente com a seção 5, que é do checkpoint 1, usei exatamente os mesmos quatro atributos dela.
+Toda afirmação dos três documentos foi conferida no código antes de entrar: as medidas de tempo e de linhas, o Identity Map e o Unit of Work da Session (rodando o mapeamento real) e o defeito da confirmação dupla, que reproduzi pela API. Foi esse teste que mostrou que a previsão de corretude do checkpoint 1 só se confirmou em parte, e a retrospectiva assume isso em vez de esconder.
 
-**Reflexão (150 a 300 palavras): o que aprendeu na Fase 2 e o que faria diferente.**
+**Uso de IA**: usei o Claude nessa entrega. Para auxiliar na criação da estrutura dos documentos, com base na análise do repositório, e para realizar correções gramaticais e ortográficas no texto. Todo o conteúdo foi revisado por mim, sendo de minha responsabilidade a definição, validação e versão final dos documentos.
+
+**Reflexão (150 a 300 palavras): o que aprendeu na Fase 2 e o que faria diferente.**:
+
+Na Fase 2, percebi que a arquitetura faz mais diferença quando precisamos alterar alguma coisa no código. No checkpoint 1, a separação em camadas parecia algo mais voltado à organização do projeto, mas, durante a refatoração do flask_app.py e a implementação do State do Ticket, entendi melhor sua importância. Ter essa divisão facilitou as mudanças e ajudou a evitar que alterações em uma parte do sistema afetassem outras. Uma das coisas que mais gostei de aprender foi criar a matriz de caracterização antes de implementar o State, utilizando o código antigo como referência. Isso permitiu comparar os comportamentos e verificar se as mudanças tinham causado algum problema.
+
+Outra coisa que aprendi foi que algumas decisões técnicas podem trazer problemas que não são tão óbvios no começo. O mapeamento imperativo ajudou a manter o domínio independente, mas também trouxe uma particularidade do SQLAlchemy: ao recriar os objetos, ele não chama o __init__. Isso acabou causando o problema do limite de 110% e exigiu uma adaptação na implementação do State, que passou a considerar o status para definir o estado. Também percebi, ao revisar a retrospectiva e conferir o código, que confirmar um pedido não significa necessariamente que o ticket foi vendido. Ou seja, algumas regras envolvem mais de uma parte do sistema e precisam ser testadas em conjunto.
+
+Se pudesse fazer algo diferente, começaria a documentação da arquitetura já no checkpoint 1, em vez de deixar para completar tudo no final. Acredito que isso teria ajudado a orientar melhor as decisões durante o desenvolvimento. Também daria mais atenção aos testes que envolvem diferentes partes do sistema desde o início, principalmente os fluxos entre agregados. Por fim, tentaria organizar melhor os prazos internos com o grupo, para evitar que boa parte do trabalho ficasse concentrada nas últimas horas antes de cada entrega.
+
 
 ### Caio Jose Carneiro (@caiojosesouz-dotcom)
 
