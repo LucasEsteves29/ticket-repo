@@ -391,6 +391,40 @@ tests/unit/test_services_pedido.py, tests/e2e/test_pedido_api.py
 
 ## fase2-checkpoint-1 — Arquitetura e ADRs
 
+### Caio Jose Carneiro (@caiojosesouz-dotcom)
+
+**O que fiz:** escrevi o ADR 0002 para registrar a decisão da Fase 1 de usar
+repositórios em memória nos testes dos casos de uso. O documento segue o template
+com contexto, decisão, alternativas e consequências. Diferencia o papel dos testes
+com fakes do papel dos testes de integração com SQLAlchemy e explicita que a
+`FakeSession` registra a chamada de commit, mas não reproduz transações.
+
+**Arquivos:** `docs/adr/0002-testes-com-fake-repository.md` e `DECISIONS.md`.
+
+**Commits:** `383862e` (16/11/2026, ADR 0002) e o commit deste registro
+(17/11/2026). As evidências da Fase 1 são `7df0ec4` (FakeTicketRepository),
+`c13cc33` (adaptador SQLAlchemy), `c78e9ed` (testes do repositório), todos de
+28/09, e `dba9d57` (29/09, uso do fake nos testes de emitir_ticket).
+
+**Decisão:** manter os fakes em fixtures independentes para testar os services
+reais sem criar tabelas nem iniciar os mapeadores ORM. Considerei como alternativas
+usar SQLite em todos os testes, usar mocks ou depender do banco de produção.
+O fake com estado permite verificar os objetos resultantes usando o contrato do
+repositório, mas acrescenta uma implementação a manter. Por isso, os testes com
+SQLAlchemy continuam necessários para conferir persistência, conversões e rollback;
+o ADR não apresenta o fake como equivalente ao banco.
+
+**Validação:** os hashes e os exemplos foram conferidos no histórico e no código.
+Na preparação do ADR em 16/11, a tentativa de executar os testes citados foi
+bloqueada pelo Controle de Aplicativo do Windows ao iniciar o Python da `.venv`;
+não foi registrado um resultado de testes locais como aprovado nessa etapa.
+Este complemento de 17/11 altera somente documentação.
+
+**Uso de IA:** o Codex (OpenAI) auxiliou na leitura do código e do histórico,
+na redação do ADR 0002 e deste registro, na conferência das referências e na
+preparação do commit e do PR #37. A execução local de testes foi tentada pelo
+assistente e encontrou o bloqueio descrito acima.
+
 ### Lucas Esteves (@LucasEsteves29)
 
 **O que fiz:** criei os esqueletos do checkpoint 1: o docs/arquitetura.md com as
@@ -944,17 +978,61 @@ Se pudesse fazer algo diferente, começaria a documentação da arquitetura já 
 
 ### Caio Jose Carneiro (@caiojosesouz-dotcom)
 
-**O que fiz:**
+**O que fiz:** reuni as decisões do agregado Ticket registradas ao longo da Fase 2:
+o uso de FakeRepository no ADR 0002, a injeção da fábrica de repositórios nas rotas
+HTTP para corrigir DIP e o Decorator para auditar check-ins. Nesta entrega,
+completei minha subseção do checkpoint 1 e este autorrelato com a reflexão final.
+As análises coletivas de frameworks e retrospectiva estão em `docs/frameworks.md`
+e `docs/retrospectiva.md`; esta subseção registra minha contribuição individual.
 
-**Arquivos:**
+**Arquivos:** nesta etapa, `DECISIONS.md`. Evidências das etapas anteriores em
+`docs/adr/0002-testes-com-fake-repository.md`, `docs/solid.md`, `docs/gof.md`,
+`src/rocketicket/entrypoints/flask_app.py`, `src/rocketicket/adapters/repository.py`,
+`src/rocketicket/adapters/audit.py` e nos testes de Ticket.
 
-**Commits:**
+**Commits:** `ed6a19a` (03/11, refatoração DIP e testes), `135d9bc` (03/11,
+documentação SOLID), `b48915a` (09/11, Decorator e testes), `83c8fa4` (09/11,
+integração com as mudanças do grupo), `56063f0` (10/11, documentação GoF),
+`383862e` (16/11, ADR 0002) e o commit deste registro (17/11).
 
-**Decisão:**
+**Decisão:** manter a seleção das dependências na composição da aplicação, os
+services responsáveis pelo commit e os repositórios sem confirmação própria da
+transação. Os fakes permitem testar a regra e o decorator em memória, enquanto os
+testes com banco verificam a gravação e o rollback conjunto de Ticket e auditoria.
+Essa separação permitiu alterar a infraestrutura de Ticket sem modificar o domínio
+nos commits de DIP e Decorator. Para evoluir, a prioridade é testar os fluxos que
+cruzam agregados e reduzir a concentração de rotas na `create_app()`, em consonância
+com os limites registrados na retrospectiva do grupo.
 
-**Uso de IA:**
+**Uso de IA:** o Codex (OpenAI) auxiliou na implementação e nos testes das etapas
+de DIP e Decorator e na redação das respectivas documentações. Nesta etapa, leu o
+histórico, o ADR 0002 e os documentos finais do grupo e redigiu estas duas subseções,
+incluindo o rascunho da reflexão abaixo, com base nas entregas registradas.
 
 **Reflexão (150 a 300 palavras): o que aprendeu na Fase 2 e o que faria diferente.**
+
+Na Fase 2, entendi melhor como a separação entre domínio e infraestrutura ajuda
+quando uma mudança precisa ser feita. O FakeRepository já permitia testar os
+services em memória, mas a rota de Ticket ainda escolhia diretamente a implementação
+SQLAlchemy. Ao injetar a fábrica de repositórios, ficou claro que ter uma interface
+não basta: quem monta a aplicação também precisa conseguir escolher a dependência.
+
+O Decorator trouxe outro aprendizado. Acrescentar auditoria por composição preservou
+o contrato do repositório, mas isso, sozinho, não garantia consistência. A mudança
+do Ticket e o registro de check-in precisavam participar da mesma transação. Os
+testes de integração com persistência e rollback mostraram uma garantia que o fake
+e a simples verificação de commit não conseguem oferecer.
+
+Também percebi o custo dessas escolhas. Contratos, implementações reais, fakes e
+composição exigem manutenção e aumentam a indireção. Flask e SQLAlchemy continuam
+necessários nas bordas, mas as regras do agregado não precisam conhecê-los. O
+benefício depende de testar cada responsabilidade no nível adequado.
+
+Se começasse novamente, registraria os ADRs junto das decisões e manteria uma suíte
+de contrato compartilhada entre fake e adaptador real para reduzir divergências.
+Separaria mais cedo as rotas por agregado e acrescentaria cenários completos de
+compra para verificar a coordenação entre Pedido, Ticket e Venda. Manteria a
+arquitetura em camadas, avaliando cada abstração pelo problema concreto que resolve.
 
 ### Igor Leal (@igorbleal)
 
