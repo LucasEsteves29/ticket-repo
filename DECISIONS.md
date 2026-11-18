@@ -1076,17 +1076,55 @@ de importação no conftest.py do checkpoint 3 teria sido pego em segundos.
 
 ### Miguel Duque (@miguelduq)
 
-**O que fiz:**
+**O que fiz:** ao longo da Fase 2 trabalhei no agregado Venda. No checkpoint 1 escrevi o
+ADR 0004 (consulta extra em abstração própria) e a alternativa Active Record da seção 5 do
+docs/arquitetura.md; no checkpoint 2 corrigi uma violação de ISP separando a
+ConsultaVendaAtiva da AbstractVendaRepository; no checkpoint 3 apliquei o Observer na Venda
+para avisar vendedor e comprador quando a venda é concluída ou cancelada. Nesta entrega,
+escrevi este autorrelato com a reflexão sobre a fase.
 
-**Arquivos:**
+**Arquivos:** nesta etapa, DECISIONS.md. Evidências das etapas anteriores em
+docs/adr/0004-consulta-extra-em-abstracao-propria.md, docs/arquitetura.md, docs/solid.md,
+docs/gof.md, src/rocketicket/domain/model.py, src/rocketicket/adapters/repository.py,
+src/rocketicket/adapters/notifications.py, src/rocketicket/service_layer/services.py,
+tests/unit/test_consulta_venda_ativa.py e tests/unit/test_venda_observer.py.
 
-**Commits:**
+**Commits:** 3e42127 e a753e66 (checkpoint 1, ADR 0004 e arquitetura.md), adf2561, da058ef,
+8682261 e 16f7f86 (checkpoint 2, ISP), 32cf2cf (09/11, Observer e testes), 53c4f89 e
+52c4947 (16/11, documentação GoF e autorrelato do checkpoint 3) e o commit deste registro
+(17/11).
 
-**Decisão:**
+**Decisão:** na reflexão, usei como exemplos só situações que podem ser conferidas no código
+e nos commits listados acima, incluindo as limitações: o Observer ainda não é usado por
+nenhum caso de uso e os atrasos nos checkpoints 1 e 3 aparecem nas datas dos commits.
 
-**Uso de IA:**
+**Uso de IA:** usei o Claude (Anthropic) em todas as etapas da Fase 2: ele redigiu a maior
+parte do código, dos testes e dos textos (ADR 0004, seções do arquitetura.md, solid.md e
+gof.md e os autorrelatos), a partir do que eu pedia, e eu rodei os testes localmente,
+revisei e fiz os commits. Nesta etapa, o Claude redigiu esta subseção e o rascunho da
+reflexão abaixo com base no histórico do nosso trabalho; eu revisei e confirmei que ela
+corresponde ao que aconteceu. A responsabilidade pelo conteúdo é minha.
 
 **Reflexão (150 a 300 palavras): o que aprendeu na Fase 2 e o que faria diferente.**
+
+Na Fase 2, o que mais aprendi foi a diferença entre conhecer um princípio e reconhecê-lo
+no próprio código. A violação de ISP que corrigi no checkpoint 2 estava num repositório que
+eu mesmo criei na Fase 1: a AbstractVendaRepository nasceu para a Venda, mas o único cliente
+da consulta de venda ativa era o criar_pedido, de outro agregado. Só percebi o problema
+quando olhei a interface do ponto de vista de quem a usa. O ADR 0004 me ensinou algo
+parecido: registrar por que uma decisão foi tomada obriga a listar as alternativas, e isso
+deixou claro o custo que eu tinha aceitado sem perceber (três lugares para mudar a cada
+consulta nova). No Observer, entendi que um padrão bem testado não é o mesmo que um padrão
+útil: ele está pronto, mas nenhum caso de uso registra o observador, porque o
+cancelar_anuncio, que era meu na Fase 1, nunca foi implementado.
+
+O que eu faria diferente é principalmente a gestão do tempo. Deixei os checkpoints 1 e 3
+para a última hora, o que me fez descumprir a regra de dois commits em dias diferentes no
+checkpoint 1 e entregar a documentação do checkpoint 3 com atraso. Também usei IA em quase
+todas as etapas; ela acelerou a escrita, mas eu teria aprendido mais se tivesse feito a
+primeira versão do código e dos textos sozinho e usado a IA para revisar, e não o contrário.
+Por fim, implementaria o cancelar_anuncio antes do Observer, para que o padrão já nascesse
+ligado a um caso de uso real.
 
 ### Guilherme Boechat (@guilhermeboechat)
 
