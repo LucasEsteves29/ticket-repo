@@ -508,6 +508,40 @@ que eu tinha tomado na Fase 1. Eu revisei o texto, conferi os hashes e as
 afirmações sobre o código e ajustei o que não correspondia ao que fiz. A
 responsabilidade pelo conteúdo é minha.
 
+### Guilherme Boechat (@guilhermeboechat)
+
+**O que fiz:** escrevi o ADR 0005, que registra a decisão da Fase 1 de manter o Pagamento
+como entidade interna do agregado Pedido, e não como agregado próprio. No contexto, mostrei
+que a invariante do Pedido mistura o estado do pedido com o do pagamento (o pedido só é
+confirmado com pagamento aprovado, e um pedido encerrado não muda de pagamento) e que nenhum
+caso de uso consulta o pagamento sozinho. Registrei a decisão no domínio e na persistência:
+a tabela pagamentos usa o pedido_id como chave primária, a FK liga só tabelas do mesmo
+agregado e a relação usa uselist=False, lazy="joined" e cascade. Também registrei três
+alternativas descartadas e as consequências positivas e negativas.
+
+**Arquivos:** docs/adr/0005-pagamento-dentro-do-pedido.md, DECISIONS.md
+
+**Commits:** 169d459 (22/10, ADR 0005) e o commit deste registro (17/11, DECISIONS.md). As
+evidências da Fase 1 citadas no ADR são 023d0e3 e 5614b72 (22/09, Pagamento e status do
+pedido), d9ef901 (24/09, confirmar(), cancelar() e transições do Pagamento), 624adca (28/09,
+tabelas e mapeamento) e e9c0223 (29/09, FakePedidoRepository e testes de integração).
+
+**Decisão:** as alternativas descartadas são decisões que eu poderia ter tomado na Fase 1:
+o Pagamento como agregado próprio, com repositório; o status do pagamento como atributo do
+Pedido, sem classe Pagamento; e um id próprio para o Pagamento. Para cada uma, expliquei se
+ela enfraqueceria a invariante ou se só acrescentaria código sem uso. Também registrei as
+consequências negativas, para que o custo da decisão ficasse explícito: o pagamento só é
+lido carregando o Pedido, um pedido tem um único pagamento (depois de uma recusa, só resta
+cancelar), o lazy="joined" faz um JOIN em todo get() e a FK pagamentos -> pedidos é uma
+exceção à regra "sem FK" do orm.py.
+
+**Uso de IA:** usei o Claude como assistente neste checkpoint. Ele leu o código e o
+histórico de commits do Pedido e redigiu um primeiro rascunho do ADR 0005 a partir das
+decisões que eu tinha tomado na Fase 1. Eu revisei o texto, conferi os hashes e as
+afirmações sobre o código e ajustei o que não correspondia ao que fiz. Nesta etapa (17/11),
+o Claude também redigiu esta subseção a partir do ADR e do histórico, e eu a revisei. A
+responsabilidade pelo conteúdo é minha.
+
 ---
 
 ## fase2-checkpoint-2 — SOLID
@@ -691,6 +725,50 @@ interface ConsultaVendaAtiva, a mudança no criar_pedido e os testes de
 test_consulta_venda_ativa.py, e me ajudou a resolver conflito do docs/solid.md no merge com a main.
 Eu rodei a suíte de testes na minha máquina, revisei o código e o texto e fiz os commits.
 A responsabilidade pelo conteúdo é minha.
+
+### Guilherme Boechat (@guilhermeboechat)
+
+**O que fiz:** corrigi uma violação do Princípio Aberto/Fechado (OCP) no Pedido.confirmar().
+No código de d9ef901 (24/09), o método testava direto, com dois if, as duas condições da
+confirmação (pagamento aprovado e ticket anunciado). Por isso, qualquer regra nova, como uma
+política de comprador ou uma checagem antifraude, exigiria editar um método já coberto por
+várias combinações de testes. Na refatoração, extraí cada condição para um objeto com o
+contrato RegraDeConfirmacao (PagamentoAprovadoParaConfirmacao e
+TicketAnunciadoParaConfirmacao). O Pedido passou a receber uma sequência de regras, com
+essas duas como padrão, e o confirmar() só percorre as regras. Escrevi um teste que injeta
+uma regra nova sem alterar o Pedido e preenchi as partes "Antes" e "Depois" da minha seção
+no docs/solid.md.
+
+**Arquivos:** src/rocketicket/domain/model.py, tests/unit/test_pedido.py, docs/solid.md,
+DECISIONS.md
+
+**Commits:** d9ef901 (24/09, anterior a 06/10, código "antes"), 50077c9 (02/11,
+refatoração e teste), 5020a71 (03/11, seções "Antes" e "Depois" do docs/solid.md) e o commit
+deste registro (17/11, DECISIONS.md).
+
+**Decisão:**
+- Defini RegraDeConfirmacao como Protocol, e não como classe abstrata. Uma regra nova só
+  precisa ter validar(pedido, status_ticket), sem herdar de nada. O teste da regra nova usa
+  justamente uma classe solta.
+- Cada regra recebe o pedido e o status do ticket, os mesmos dados que o confirmar() já
+  tinha. Assim o Pedido continua sem enxergar o agregado Ticket, como na Fase 1.
+- REGRAS_DE_CONFIRMACAO_PADRAO mantém as duas validações originais. Quem cria o Pedido sem
+  passar regras, como o criar_pedido e todos os testes existentes, tem exatamente o
+  comportamento anterior, com as mesmas exceções e mensagens.
+- O confirmar() lê as regras com getattr(self, "_regras_confirmacao", padrão). O Pedido
+  carregado do banco não passa pelo __init__ (mapeamento imperativo, ADR 0001), então não
+  teria o atributo. O custo é que as regras não são persistidas: um pedido lido do banco
+  sempre usa o conjunto padrão.
+- Os 20 testes que já existiam em tests/unit/test_pedido.py passaram sem nenhuma alteração,
+  e a suíte foi de 180 para 181 testes com o teste da regra nova: é essa a evidência de que o
+  comportamento não mudou.
+
+**Uso de IA:** usei o Claude como assistente em todas as etapas deste checkpoint: na
+refatoração, na busca por erros, na redação do docs/solid.md e na revisão do código e do
+texto. Eu revisei o resultado, conferi as afirmações sobre o código e fiz os commits. Nesta
+etapa (17/11), o Claude também redigiu esta subseção a partir do histórico e conferiu os
+números da suíte rodando os testes antes e depois de 50077c9, e eu a revisei. A
+responsabilidade pelo conteúdo é minha.
 
 ---
 
