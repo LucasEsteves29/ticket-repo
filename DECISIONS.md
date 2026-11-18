@@ -1206,14 +1206,57 @@ ligado a um caso de uso real.
 
 ### Guilherme Boechat (@guilhermeboechat)
 
-**O que fiz:**
+**O que fiz:** ao longo da Fase 2, trabalhei no agregado Pedido. No checkpoint 1, escrevi o
+ADR 0005 (Pagamento dentro do Pedido). No checkpoint 2, corrigi uma violação de OCP no
+Pedido.confirmar(), extraindo as condições da confirmação para regras com o contrato
+RegraDeConfirmacao. No checkpoint 3, apliquei o Adapter para integrar ao Pedido um gateway
+de pagamento externo simulado. Nesta entrega, registrei no DECISIONS.md as subseções dos
+checkpoints 1 e 2, que estavam faltando, tirei os comentários do esqueleto da minha seção do
+docs/gof.md e escrevi este autorrelato com a reflexão sobre a fase.
 
-**Arquivos:**
+**Arquivos:** nesta etapa, DECISIONS.md e docs/gof.md. As evidências das etapas anteriores
+estão em docs/adr/0005-pagamento-dentro-do-pedido.md, docs/solid.md, docs/gof.md,
+src/rocketicket/domain/model.py, src/rocketicket/service_layer/services.py,
+src/rocketicket/adapters/pagamento.py, src/rocketicket/adapters/gateway_simulado.py,
+tests/unit/test_pedido.py, tests/unit/test_services_pedido.py,
+tests/unit/test_gateway_pagamento.py e tests/e2e/test_pedido_api.py.
 
-**Commits:**
+**Commits:** 169d459 (22/10, ADR 0005), 50077c9 e 5020a71 (02/11 e 03/11, OCP e
+docs/solid.md), e10e80b (09/11, Adapter, testes e documentação), 327ca1b (17/11, subseções
+dos checkpoints 1 e 2), f66c499 (17/11, limpeza do docs/gof.md) e o commit deste registro
+(17/11).
 
-**Decisão:**
+**Decisão:** na reflexão, usei como exemplos só situações que podem ser conferidas no código
+e nos commits listados acima. Isso inclui as limitações do meu agregado: a confirmação de dois
+pedidos para o mesmo ticket, apontada na retrospectiva do grupo, e a cobrança feita antes da
+checagem do ticket no Adapter, registrada no docs/gof.md.
 
-**Uso de IA:**
+**Uso de IA:** usei o Claude (Anthropic) como assistente em todas as etapas da Fase 2, como
+descrevi em cada checkpoint: no rascunho do ADR 0005, na refatoração OCP e no docs/solid.md, e
+na implementação e na documentação do Adapter, sempre a partir do que eu pedia. Eu revisei,
+conferi as afirmações sobre o código e fiz os commits. Nesta etapa, o Claude leu o histórico e
+os documentos finais do grupo e redigiu as subseções dos checkpoints 1 e 2, esta subseção e o
+rascunho da reflexão abaixo, com base no histórico do meu trabalho. Eu revisei e confirmei que
+ela corresponde ao que aconteceu. A responsabilidade pelo conteúdo é minha.
 
 **Reflexão (150 a 300 palavras): o que aprendeu na Fase 2 e o que faria diferente.**
+
+Na Fase 2, aprendi que uma regra correta dentro do agregado não garante que o sistema esteja
+correto. O ADR 0005 me fez justificar por que o Pagamento mora dentro do Pedido: a regra "só
+confirma com pagamento aprovado" fica protegida num lugar só e é testada sem banco. Mas a
+retrospectiva mostrou que o confirmar_pedido lê o status do ticket e não o altera, e por isso
+dois pedidos do mesmo ticket podem ser confirmados. A regra que envolve Pedido, Ticket e Venda
+depende do service, e eu deixei essa etapa para os eventos da Fase 2, que saíram do trabalho.
+
+Na refatoração OCP, entendi na prática o custo do mapeamento imperativo: o Pedido carregado
+do banco não passa pelo __init__, e precisei de um getattr com as regras padrão. No Adapter,
+vi que isolar o fornecedor atrás de uma porta deixa o service falando só a língua do
+domínio. Por outro lado, integrar com algo externo muda a ordem das operações: a cobrança
+acontece fora da transação. Por isso foi preciso o exigir_cobranca_pendente(), para não
+cobrar duas vezes, e a checagem do ticket depois da cobrança ficou como limitação.
+
+O que eu faria diferente: registraria cada decisão no DECISIONS.md no próprio checkpoint, e
+não só na entrega final, reconstruindo pelo histórico. Escreveria desde o começo um teste do
+fluxo completo de compra, que teria mostrado a confirmação dupla antes da retrospectiva, e
+faria o confirmar_pedido vender o ticket e concluir a venda na mesma transação. Também
+cuidaria melhor das mensagens de commit: a do ADR 0005 foi só "ddr 005".
