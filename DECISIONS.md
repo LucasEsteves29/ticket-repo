@@ -1036,17 +1036,43 @@ arquitetura em camadas, avaliando cada abstração pelo problema concreto que re
 
 ### Igor Leal (@igorbleal)
 
-**O que fiz:**
+**O que fiz:** na entrega final, completei o meu autorrelato da Fase 2: registrei no
+DECISIONS.md a subseção do checkpoint 1, com o ADR 0003, e escrevi esta subseção com a
+reflexão sobre a fase.
 
-**Arquivos:**
+**Arquivos:** DECISIONS.md
 
-**Commits:**
+**Commits:** 48df28d (16/11, subseção do checkpoint 1, integrada pelo PR #36) e o commit
+deste registro (17/11, reflexão da entrega final).
 
-**Decisão:**
+**Decisão:** na reflexão, usei como exemplos situações do meu agregado que aparecem no
+histórico (a PoliticaTetoPercentual em 576af01, o MementoPrecoVenda em 7435b36 e o ADR 0003
+em b5ca4ad), para que cada afirmação possa ser conferida no código e nos commits.
 
-**Uso de IA:**
+**Uso de IA:** usei o Antigravity (Google Gemini) para reler o histórico dos meus commits da
+Fase 2 e organizar os tópicos da reflexão. O texto final foi revisado e ajustado por mim, e
+a responsabilidade pelo conteúdo é minha.
 
 **Reflexão (150 a 300 palavras): o que aprendeu na Fase 2 e o que faria diferente.**
+
+Na Fase 2, aprendi que o custo de uma decisão de arquitetura aparece nos detalhes de
+integração, e não no diagrama. O mapeamento imperativo do SQLAlchemy, que adotamos no ADR
+0001 para manter o domínio puro, me cobrou duas vezes. Na refatoração SRP (576af01), a Venda
+carregada do banco não passa pelo __init__ e ficaria sem politica_preco, o que resolvi
+declarando a política também como atributo de classe. No Memento (7435b36), os atributos com
+sublinhado do MementoPrecoVenda exigiram properties explícitas em orm.py. Nos dois casos, a
+camada de adaptadores absorveu o problema sem que o model.py precisasse conhecer o banco, e
+foi aí que entendi na prática o que significa o domínio não depender do framework. Também
+aprendi que um padrão GoF só se justifica quando o problema existe antes dele: escolhi
+Memento porque precisava guardar o preço entre requisições, e descartei Command porque não
+havia fila nem várias operações desfazíveis. O que faria diferente: escreveria o ADR 0003
+(b5ca4ad, 22/10) no momento da decisão, e não um mês depois, reconstruindo o motivo pelo
+histórico do git; começaria cada refatoração por um teste de caracterização, como o Lucas fez
+no State, em vez de confiar só na suíte existente; e trataria já na implementação os mementos
+que ficam órfãos em historico_precos quando a venda é concluída ou cancelada, em vez de
+apenas registrá-los como custo. Por fim, rodaria a suíte inteira antes de cada push: o erro
+de importação no conftest.py do checkpoint 3 teria sido pego em segundos.
+
 
 ### Miguel Duque (@miguelduq)
 
