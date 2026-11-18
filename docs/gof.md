@@ -853,21 +853,11 @@ de uso.
 
 ### Nome e categoria
 
-<!--
-Responsável: Guilherme
-O enunciado exige: o nome do padrão e a sua categoria no GoF.
--->
-
 **Adapter**, padrão **estrutural** do GoF, na variante de objeto (por composição). Ele
 converte a interface de uma classe em outra que o cliente espera, permitindo que classes
 com interfaces incompatíveis trabalhem juntas.
 
 ### Contexto e problema
-
-<!--
-Responsável: Guilherme
-O enunciado exige: o contexto e o problema real do domínio que o padrão resolve.
--->
 
 Um pedido só pode ser confirmado com o pagamento aprovado (ADR 0005). Até a entrega da
 Fase 1, ninguém cobrava de fato: a rota `POST /pedidos/<id>/confirmacao` recebia
@@ -893,11 +883,6 @@ fornecedor, ou usar um gateway falso nos testes, exigiria editar o caso de uso.
 
 ### Alternativa considerada
 
-<!--
-Responsável: Guilherme
-O enunciado exige: a alternativa considerada.
--->
-
 1. **Chamar o `ClienteGatewayExterno` direto no `confirmar_pedido`.** É menos código, mas
    amarra o caso de uso ao formato de um fornecedor. A conversão de `Decimal` para
    centavos e o mapeamento de `"approved"`/`"declined"`/`"error"` ficariam misturados à
@@ -912,11 +897,6 @@ O enunciado exige: a alternativa considerada.
    cliente HTTP continuaria decidindo se o pagamento foi aprovado.
 
 ### Participantes (classes reais)
-
-<!--
-Responsável: Guilherme
-O enunciado exige: os participantes do padrão, mapeados para as classes reais do código.
--->
 
 | Papel no GoF | Classe real | Arquivo |
 | :--- | :--- | :--- |
@@ -944,11 +924,6 @@ dos gateways reais: `tok_aprovado` aprova, `tok_recusado` recusa, `tok_falha` de
 erro e qualquer outro token é recusado.
 
 ### Diagrama de classes (Mermaid)
-
-<!--
-Responsável: Guilherme
-O enunciado exige: o diagrama de classes em Mermaid, com a fonte em texto neste arquivo.
--->
 
 ```mermaid
 classDiagram
@@ -1001,11 +976,6 @@ classDiagram
 
 ### Teste
 
-<!--
-Responsável: Guilherme
-O enunciado exige: o teste que cobre o padrão.
--->
-
 - **`tests/unit/test_gateway_pagamento.py`** cobre o Adapter isolado. Com um
   `ClienteEspiao` no lugar do Adaptee, verifica o payload montado, a conversão para
   centavos (`0.01 -> 1`, `110.5 -> 11050`, `1000 -> 100000`), a recusa de fração de
@@ -1027,11 +997,6 @@ O enunciado exige: o teste que cobre o padrão.
 A suíte foi de 296 para 326 testes, todos passando com `python -m pytest tests`.
 
 ### Custo
-
-<!--
-Responsável: Guilherme
-O enunciado exige: o custo de introduzir o padrão.
--->
 
 - **Código novo:** dois módulos (`pagamento.py`, 68 linhas, e `gateway_simulado.py`, 49
   linhas) e uma exceção a mais (`GatewayIndisponivel`), tratada em `erros.py`. Para uma
